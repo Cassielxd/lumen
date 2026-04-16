@@ -1,0 +1,375 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #14213d;
+  background:
+    radial-gradient(circle at top left, rgba(244, 162, 97, 0.26), transparent 30%),
+    radial-gradient(circle at top right, rgba(47, 79, 79, 0.2), transparent 32%),
+    linear-gradient(180deg, #f9fafb 0%, #eef3f8 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100vh;
+  margin: 0;
+}
+
+body {
+  color: #14213d;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.glass-card {
+  border: 1px solid rgba(20, 33, 61, 0.08);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 24px 80px rgba(20, 33, 61, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.section-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.section-subtitle {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.client-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #334155;
+  font-size: 13px;
+}
+
+.page-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.workspace-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1.2fr 0.8fr;
+}
+
+.stats-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.panel-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.token-preview {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  font-size: 12px;
+  color: #475569;
+}
+
+.muted-text {
+  color: #64748b;
+}
+
+.login-layout {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+.login-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 36px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.24), transparent 24%),
+    radial-gradient(circle at 80% 10%, rgba(37, 99, 235, 0.14), transparent 24%),
+    linear-gradient(135deg, #fff9f3 0%, #fff 50%, #eef5ff 100%);
+}
+
+.login-banner::after {
+  content: "";
+  position: absolute;
+  inset: auto -40px -80px auto;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.login-panel {
+  padding: 28px;
+}
+
+.client-option {
+  cursor: pointer;
+  border-radius: 22px;
+  border: 1px solid rgba(20, 33, 61, 0.08);
+  padding: 18px;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.client-option:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.client-option.is-active {
+  border-color: #f97316;
+  box-shadow: 0 14px 30px rgba(249, 115, 22, 0.16);
+}
+
+.client-option h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.client-option p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.dashboard-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 28px;
+}
+
+.dashboard-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.24), transparent 35%),
+    linear-gradient(120deg, var(--hero-from) 0%, var(--hero-to) 100%);
+  z-index: 0;
+}
+
+.dashboard-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-title {
+  margin: 10px 0 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+.hero-subtitle {
+  max-width: 720px;
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.8;
+}
+
+.dashboard-main {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1.3fr 0.9fr;
+}
+
+.card-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tag-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.passkey-row {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(20, 33, 61, 0.08);
+}
+
+.passkey-row:last-child {
+  border-bottom: 0;
+}
+
+.captcha-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 128px;
+}
+
+.captcha-image {
+  width: 100%;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(20, 33, 61, 0.08);
+  background: #f8fafc;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.console-shell {
+  min-height: 100vh;
+  padding: 24px;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.console-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 20px;
+}
+
+.console-brand h2 {
+  margin: 14px 0 0;
+  font-size: 24px;
+  color: #0f172a;
+}
+
+.console-brand p {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+.console-menu {
+  border-right: 0;
+  background: transparent;
+}
+
+.console-main {
+  min-width: 0;
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
+.console-topbar {
+  padding: 20px 24px;
+}
+
+.console-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.console-title-row h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #0f172a;
+}
+
+.toolbar-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-span-2 {
+  grid-column: span 2;
+}
+
+@media (max-width: 1120px) {
+  .login-layout,
+  .dashboard-main,
+  .workspace-grid,
+  .console-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-shell {
+    padding: 16px;
+  }
+
+  .login-banner,
+  .login-panel,
+  .dashboard-hero {
+    padding: 22px;
+  }
+
+  .console-topbar,
+  .console-sidebar {
+    padding: 18px;
+  }
+
+  .hero-title {
+    font-size: 28px;
+  }
+
+  .captcha-row {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-span-2 {
+    grid-column: span 1;
+  }
+}

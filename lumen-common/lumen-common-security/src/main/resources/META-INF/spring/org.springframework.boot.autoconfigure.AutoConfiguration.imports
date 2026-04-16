@@ -1,0 +1,8 @@
+com.lumencloud.lumen.common.security.service.LumenUserDetailsServiceImpl
+com.lumencloud.lumen.common.security.service.LumenAppUserDetailsServiceImpl
+com.lumencloud.lumen.common.security.service.LumenRedisOAuth2AuthorizationService
+com.lumencloud.lumen.common.security.service.LumenRedisOAuth2AuthorizationConsentService
+com.lumencloud.lumen.common.security.component.LumenSecurityInnerAspect
+com.lumencloud.lumen.common.security.component.LumenSecurityMessageSourceConfiguration
+com.lumencloud.lumen.common.security.component.LumenBootCorsProperties
+com.lumencloud.lumen.common.security.service.LumenRemoteRegisteredClientRepository

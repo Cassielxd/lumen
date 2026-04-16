@@ -1,0 +1,2 @@
+com.lumencloud.lumen.common.log.LogAutoConfiguration
+com.lumencloud.lumen.common.log.init.ApplicationLoggerInitializer

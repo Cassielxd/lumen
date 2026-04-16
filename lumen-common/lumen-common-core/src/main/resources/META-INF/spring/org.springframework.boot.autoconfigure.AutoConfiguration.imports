@@ -1,0 +1,5 @@
+com.lumencloud.lumen.common.core.config.JacksonConfiguration
+com.lumencloud.lumen.common.core.config.RedisTemplateConfiguration
+com.lumencloud.lumen.common.core.config.RestTemplateConfiguration
+com.lumencloud.lumen.common.core.util.SpringContextHolder
+com.lumencloud.lumen.common.core.config.WebMvcConfiguration

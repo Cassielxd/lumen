@@ -1,0 +1,6 @@
+com.lumencloud.lumen.admin.api.feign.RemoteClientDetailsService
+com.lumencloud.lumen.admin.api.feign.RemoteDictService
+com.lumencloud.lumen.admin.api.feign.RemoteLogService
+com.lumencloud.lumen.admin.api.feign.RemoteParamService
+com.lumencloud.lumen.admin.api.feign.RemoteTokenService
+com.lumencloud.lumen.admin.api.feign.RemoteUserService

@@ -1,0 +1,44 @@
+services:
+  lumen-mysql:
+    build:
+      context: ./db
+    environment:
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_ROOT_PASSWORD: root
+    restart: always
+    container_name: lumen-mysql
+    image: lumen-mysql
+    ports:
+      - 33306:3306
+    networks:
+      - spring_cloud_default
+
+  lumen-redis:
+    image: registry.cn-hangzhou.aliyuncs.com/dockerhub_mirror/redis
+    ports:
+      - 36379:6379
+    restart: always
+    container_name: lumen-redis
+    hostname: lumen-redis
+    networks:
+      - spring_cloud_default
+
+  lumen-boot:
+    build:
+      context: ./lumen-boot
+    restart: always
+    ports:
+      - 9999:9999
+    container_name: lumen-boot
+    hostname: lumen-boot
+    image: lumen-boot
+    environment:
+      MYSQL_HOST: lumen-mysql
+      REDIS_HOST: lumen-redis
+    networks:
+      - spring_cloud_default
+
+networks:
+  spring_cloud_default:
+    name: spring_cloud_default
+    driver: bridge
