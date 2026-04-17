@@ -69,7 +69,8 @@ public class SysMobileServiceImpl implements SysMobileService {
 		String clientId = resolveClientId();
 		if (StrUtil.isNotBlank(clientId)) {
 			Optional<AuthAccount> accountOptional = authAccountService.resolveAccount(clientId, null, mobile);
-			if (accountOptional.isEmpty() || !hasAvailableOtpCredential(accountOptional.get())) {
+			if (accountOptional.isEmpty() || !StrUtil.equals(CommonConstants.STATUS_NORMAL, accountOptional.get().getStatus())
+					|| !hasAvailableOtpCredential(accountOptional.get())) {
 				log.info("Phone is not registered for client {}: {}", clientId, mobile);
 				return R.failed(MsgUtils.getMessage(ErrorCodes.SYS_APP_PHONE_UNREGISTERED, mobile));
 			}

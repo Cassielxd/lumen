@@ -148,6 +148,30 @@ public class AuthSessionServiceImpl implements AuthSessionService {
 		return Boolean.TRUE;
 	}
 
+	@Override
+	public List<AuthSessionVO> listAll(String clientId, String principalName, String status) {
+		return authSessionMapper.selectList(Wrappers.<AuthSession>lambdaQuery()
+			.eq(StringUtils.hasText(clientId), AuthSession::getClientId, clientId)
+			.eq(StringUtils.hasText(principalName), AuthSession::getPrincipalName, principalName)
+			.eq(StringUtils.hasText(status), AuthSession::getStatus, status)
+			.orderByDesc(AuthSession::getLastActiveTime)
+			.orderByDesc(AuthSession::getCreateTime))
+			.stream()
+			.map(session -> toView(session, null))
+			.toList();
+	}
+
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public Boolean adminLogoutBySid(String sid) {
+		if (!StringUtils.hasText(sid)) {
+			return Boolean.FALSE;
+		}
+		AuthSession session = authSessionMapper.selectOne(Wrappers.<AuthSession>lambdaQuery()
+			.eq(AuthSession::getSid, sid), false);
+		return markLogout(session);
+	}
+
 	private Boolean markLogout(AuthSession session) {
 		if (session == null) {
 			return Boolean.TRUE;

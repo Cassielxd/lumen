@@ -9,6 +9,8 @@ import com.lumencloud.lumen.admin.service.AuthAccountService;
 import com.lumencloud.lumen.common.core.constant.CacheConstants;
 import com.lumencloud.lumen.common.core.constant.CommonConstants;
 import com.lumencloud.lumen.common.core.constant.SecurityConstants;
+import com.lumencloud.lumen.common.core.exception.ErrorCodes;
+import com.lumencloud.lumen.common.core.util.MsgUtils;
 import com.lumencloud.lumen.common.core.util.R;
 import com.lumencloud.lumen.common.core.util.RedisUtils;
 import com.lumencloud.lumen.common.core.util.WebUtils;
@@ -35,6 +37,7 @@ class SysMobileServiceImplTest {
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(100001L);
 		account.setClientId("app");
+		account.setStatus(CommonConstants.STATUS_NORMAL);
 		AuthAccountCredential credential = new AuthAccountCredential();
 		credential.setStatus(CommonConstants.STATUS_NORMAL);
 
@@ -74,6 +77,7 @@ class SysMobileServiceImplTest {
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(100001L);
 		account.setClientId("app");
+		account.setStatus(CommonConstants.STATUS_NORMAL);
 		AuthAccountCredential credential = new AuthAccountCredential();
 		credential.setStatus(CommonConstants.STATUS_NORMAL);
 
@@ -91,6 +95,32 @@ class SysMobileServiceImplTest {
 			assertThat(result.getData().getCode()).isEqualTo("654321");
 			assertThat(result.getData().getReused()).isTrue();
 			assertThat(result.getData().getDelivered()).isFalse();
+		}
+	}
+
+	@Test
+	void sendSmsCodeShouldRejectLockedAccountForClientScopedOtp() {
+		SysUserMapper userMapper = mock(SysUserMapper.class);
+		AuthAccountService authAccountService = mock(AuthAccountService.class);
+		SysMobileServiceImpl service = new SysMobileServiceImpl(userMapper, authAccountService);
+
+		AuthAccount account = new AuthAccount();
+		account.setAccountId(100001L);
+		account.setClientId("app");
+		account.setStatus(CommonConstants.STATUS_LOCK);
+
+		when(authAccountService.resolveAccount("app", null, "17034642999")).thenReturn(Optional.of(account));
+
+		try (MockedStatic<WebUtils> webUtils = mockStatic(WebUtils.class);
+				MockedStatic<MsgUtils> msgUtils = mockStatic(MsgUtils.class)) {
+			webUtils.when(WebUtils::findClientId).thenReturn(Optional.of("app"));
+			msgUtils.when(() -> MsgUtils.getMessage(ErrorCodes.SYS_APP_PHONE_UNREGISTERED, "17034642999"))
+				.thenReturn("手机号未注册");
+
+			R<SmsCodeSendVO> result = service.sendSmsCode("17034642999");
+
+			assertThat(result.getCode()).isEqualTo(1);
+			assertThat(result.getData()).isNull();
 		}
 	}
 }

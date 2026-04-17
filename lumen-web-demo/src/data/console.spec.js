@@ -9,7 +9,10 @@ describe("console helpers", () => {
     expect(menu[1].children.map((item) => item.index)).toEqual([
       "/dashboard/platform/clients",
       "/dashboard/platform/login-methods",
-      "/dashboard/platform/accounts"
+      "/dashboard/platform/accounts",
+      "/dashboard/platform/credentials",
+      "/dashboard/platform/sessions",
+      "/dashboard/platform/audit"
     ]);
   });
 

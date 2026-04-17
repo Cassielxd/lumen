@@ -535,6 +535,28 @@ CREATE TABLE `auth_account` (
 ) ENGINE=InnoDB COMMENT='Client-bound authentication account';
 
 -- ----------------------------
+-- Table structure for auth_account_identifier
+-- ----------------------------
+DROP TABLE IF EXISTS `auth_account_identifier`;
+CREATE TABLE `auth_account_identifier` (
+  `identifier_id` bigint NOT NULL COMMENT 'Identifier ID',
+  `account_id` bigint NOT NULL COMMENT 'Account ID',
+  `client_id` varchar(32) NOT NULL COMMENT 'Client ID',
+  `identifier_type` varchar(32) NOT NULL COMMENT 'Identifier type',
+  `identifier_value` varchar(128) NOT NULL COMMENT 'Identifier value',
+  `primary_flag` char(1) DEFAULT '1' COMMENT 'Primary flag',
+  `verified_at` datetime DEFAULT NULL COMMENT 'Verified time',
+  `status` char(1) DEFAULT '0' COMMENT 'Status',
+  `create_by` varchar(64) DEFAULT NULL COMMENT 'Created by',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+  `update_by` varchar(64) DEFAULT NULL COMMENT 'Updated by',
+  `update_time` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
+  PRIMARY KEY (`identifier_id`) USING BTREE,
+  UNIQUE KEY `uk_auth_account_identifier_client` (`client_id`,`identifier_type`,`identifier_value`) USING BTREE,
+  KEY `idx_auth_account_identifier_account_id` (`account_id`) USING BTREE
+) ENGINE=InnoDB COMMENT='Authentication account identifier';
+
+-- ----------------------------
 -- Records of auth_account
 -- ----------------------------
 BEGIN;
@@ -544,6 +566,24 @@ INSERT INTO `auth_account` VALUES (100003, 1, 'gen', 'admin', '17034642999', '0'
 INSERT INTO `auth_account` VALUES (100004, 1, 'mp', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
 INSERT INTO `auth_account` VALUES (100005, 1, 'lumen', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
 INSERT INTO `auth_account` VALUES (100006, 1, 'test', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+COMMIT;
+
+-- ----------------------------
+-- Records of auth_account_identifier
+-- ----------------------------
+BEGIN;
+INSERT INTO `auth_account_identifier` VALUES (220001, 100001, 'app', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220002, 100001, 'app', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220003, 100002, 'daemon', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220004, 100002, 'daemon', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220005, 100003, 'gen', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220006, 100003, 'gen', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220007, 100004, 'mp', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220008, 100004, 'mp', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220009, 100005, 'lumen', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220010, 100005, 'lumen', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220011, 100006, 'test', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account_identifier` VALUES (220012, 100006, 'test', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
 COMMIT;
 
 -- ----------------------------

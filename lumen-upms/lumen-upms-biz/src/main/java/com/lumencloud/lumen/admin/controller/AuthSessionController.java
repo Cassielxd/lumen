@@ -6,6 +6,7 @@ import com.lumencloud.lumen.admin.api.entity.AuthSession;
 import com.lumencloud.lumen.admin.api.vo.AuthSessionVO;
 import com.lumencloud.lumen.admin.service.AuthSessionService;
 import com.lumencloud.lumen.common.core.util.R;
+import com.lumencloud.lumen.common.log.annotation.SysLog;
 import com.lumencloud.lumen.common.security.annotation.Inner;
 import com.lumencloud.lumen.common.security.util.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -68,16 +70,32 @@ public class AuthSessionController {
 	}
 
 	@DeleteMapping("/current/{sid}")
+	@SysLog("撤销当前账号会话")
 	@Operation(summary = "Revoke session", description = "Revoke one session of current account")
 	public R<Boolean> revokeCurrentSession(@PathVariable String sid) {
 		return R.ok(authSessionService.logoutBySid(SecurityUtils.getUser().getAccountId(), sid));
 	}
 
 	@DeleteMapping("/current/others")
+	@SysLog("撤销其他设备会话")
 	@Operation(summary = "Revoke other sessions", description = "Revoke all other sessions of current account")
 	public R<Boolean> revokeOtherSessions() {
 		return R.ok(authSessionService.logoutOtherSessions(SecurityUtils.getUser().getAccountId(),
 				SecurityUtils.getSessionId()));
+	}
+
+	@GetMapping("/manage/list")
+	@Operation(summary = "List platform sessions", description = "List all sessions with platform filters")
+	public R<List<AuthSessionVO>> manageSessions(@RequestParam(required = false) String clientId,
+			@RequestParam(required = false) String principalName, @RequestParam(required = false) String status) {
+		return R.ok(authSessionService.listAll(clientId, principalName, status));
+	}
+
+	@DeleteMapping("/manage/{sid}")
+	@SysLog("平台撤销会话")
+	@Operation(summary = "Revoke platform session", description = "Revoke one session by sid")
+	public R<Boolean> revokeManagedSession(@PathVariable String sid) {
+		return R.ok(authSessionService.adminLogoutBySid(sid));
 	}
 
 }

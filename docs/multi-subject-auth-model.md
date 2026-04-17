@@ -1,326 +1,314 @@
-# Client-Centric OAuth2 Authentication Model
+# 多入口认证与会话模型
 
-## Positioning
+## 定位
 
-The current project should stay on the existing OAuth2 authorization-server model.
+当前项目采用的是以 `client` 为中心的 OAuth2 认证模型。
 
-At this stage:
+在这一版设计里：
 
-- `client` is the business audience boundary
-- `account` is the logged-in principal
-- `grant_type` is the login and token issuance mechanism
-- no extra `subject_type` layer is needed
-- no extra `login_method` relation table is needed
+- `client` 表示业务入口边界
+- `account` 表示实际登录主体
+- `identifier` 表示账号登录标识
+- `credential` 表示认证凭证
+- `grant_type` 表示令牌获取和登录方式
+- `session` 表示显式会话
 
-The current system already has a working client-grant authorization mechanism. The correct extension direction is to extend OAuth2 grants, not to build a second authorization layer beside OAuth2.
+当前不单独引入 `subject_type` 这一层，而是由 `client` 承担入口隔离。
 
-## Core Objects
+这和当前业务更契合：
 
-### Account
+- `app` 对应会员入口
+- `daemon` 对应社区运营入口
+- `lumen` 对应平台运营入口
+- 后续可以继续扩展到 `1..N` 个入口
 
-`account` is the concrete principal that logs in.
+---
 
-It provides:
+## 核心对象
 
-- identity
-- password or other credential material
-- authorities and business permissions
+## 1. Client
 
-### Client
+`client` 是登录入口，也是协议边界。
 
-`client` is the audience boundary and application boundary.
-
-Examples:
-
-- `member-web`
-- `member-ios`
-- `community-console-web`
-- `platform-console-web`
-
-In the current codebase, a client is stored in `sys_oauth_client_details`.
-
-### Grant Type
-
-`grant_type` is the mechanism used by the client to obtain a token.
-
-The project already uses:
-
-- standard grants such as `authorization_code`, `refresh_token`, `client_credentials`
-- custom grants such as `password`
-- legacy custom mobile-code login, currently compatible with `mobile` and `otp`
-
-For this project, human login expansion should continue through custom grant types.
-
-### Session And Authorization
-
-Runtime token and authorization state should remain inside the existing OAuth2 authorization service implementation.
-
-The current project already has:
-
-- `RegisteredClient` loading
-- `OAuth2AuthorizationService`
-- token generation
-- custom grant provider chain
-
-That is the correct extension point.
-
-## Existing Mechanism In This Project
-
-### 1. Client Configuration Source
-
-`sys_oauth_client_details` is the source of client protocol configuration.
-
-It already carries:
+在当前代码里，`client` 由 `sys_oauth_client_details` 承载，核心字段包括：
 
 - `client_id`
 - `client_secret`
 - `scope`
 - `resource_ids`
 - `authorized_grant_types`
-- token TTL settings
+- token 生命周期配置
 
-The key point is:
+关键点：
 
-- `authorized_grant_types` already decides which login/token flows a client may use
+- `authorized_grant_types` 就是当前入口允许的登录方式来源
+- 不再额外设计第二套“登录方式授权表”
 
-No second client-login-method table should be introduced beside it.
+## 2. Account
 
-### 2. RegisteredClient Construction
+`auth_account` 表示某个入口下的认证账号。
 
-`LumenRemoteRegisteredClientRepository` reads `sys_oauth_client_details` and converts every `authorized_grant_types` item into `RegisteredClient.authorizationGrantTypes(...)`.
+它的职责是：
 
-So the OAuth2 framework already knows which grant types are allowed for each client.
+- 绑定用户与入口
+- 作为认证后的实际账号主体
+- 承接该入口下的凭证、标识、会话
 
-### 3. Token Endpoint Dispatch
+同一个自然人可以在多个 `client` 下拥有多个 `auth_account`。
 
-`AuthorizationServerConfiguration` registers:
+## 3. Identifier
 
-- standard token converters
-- custom token converters
-- custom authentication providers
+`auth_account_identifier` 表示账号下的登录标识。
 
-This means token requests are already dispatched by `grant_type`.
+当前支持：
 
-### 4. Per-Grant Client Validation
+- `USERNAME`
+- `PHONE`
+- `EMAIL`
 
-Each custom grant provider performs client validation against `RegisteredClient.getAuthorizationGrantTypes()`.
+这一层的作用是把“账号”和“登录标识”拆开，便于后续扩展：
 
-That means:
+- 一个账号多个登录标识
+- 标识启停
+- 主标识与扩展标识并存
 
-- the client permission check already exists
-- it already happens inside the OAuth2 flow
-- there is no need to build another login-method authorization layer
+## 4. Credential
 
-## Current Design Decision
+`auth_account_credential` 表示账号绑定的认证凭证。
 
-The current model should be:
+当前支持：
 
-- client-centric
-- OAuth2 grant-centric
-- resource authorization still based on client scopes/resources plus account permissions
+- `PASSWORD`
+- `OTP`
+- `PASSKEY`
 
-And it should explicitly avoid:
+当前各凭证职责：
 
-- `subject_type` tables
-- generic `auth_login_method` tables
-- generic `auth_client_login_method` relation tables
+- `PASSWORD`：账号密码
+- `OTP`：短信验证码登录能力
+- `PASSKEY`：WebAuthn Passkey 凭证
 
-Those abstractions do not add runtime value in the current project stage.
+## 5. Session
 
-## How To Extend Login Capability
+`auth_session` 表示显式会话。
 
-When a new login capability is added, use the existing OAuth2 extension path.
+它是会话治理的真相源，用于：
 
-### Step 1. Define A New Grant
+- 多设备在线
+- 当前设备退出
+- 其他设备退出
+- 平台侧会话查询
+- 平台侧会话撤销
 
-Examples:
+当前设计不是只依赖 Redis 中的 token 缓存，而是把会话显式建模出来。
 
-- `otp`
-- `passkey`
+---
 
-If compatibility is needed, the old grant can be retained temporarily as an alias.
+## 为什么选择这套模型
 
-### Step 2. Implement The Grant Chain
+## 1. 与 OAuth2 协议边界一致
 
-Add the matching OAuth2 components:
+当前项目的核心边界是“入口边界”，而 OAuth2 天然提供了 `client`。
 
-- `AuthenticationConverter`
-- `AuthenticationToken`
-- `AuthenticationProvider`
-- registration in the authorization-server configuration
+所以当前模型直接对齐：
 
-If the current handler SPI remains useful, it can stay as an internal code organization mechanism. It is not a second business authorization model.
+- 入口边界 -> `client`
+- 登录方式 -> `grant_type`
+- 登录账号 -> `auth_account`
+- 登录标识 -> `auth_account_identifier`
+- 认证凭证 -> `auth_account_credential`
+- 运行时会话 -> `auth_session`
 
-### Step 3. Authorize The Grant On The Client
+这样协议边界和业务边界是一致的。
 
-Add the grant string to `sys_oauth_client_details.authorized_grant_types` for the clients that should support it.
+## 2. 支持 `1..N` 个入口
 
-This is the only per-client authorization source for login flow enablement.
+当前表面需求只有三类主体，但真实需求是支持 `1..N` 个业务入口。
 
-### Step 4. Add Optional Admin Dictionary Data
+这套模型不依赖固定三类主体，而是允许：
 
-If the admin side needs selectable options or display labels, add the new grant into the existing `grant_types` dictionary data.
+- 新增一个 `client`
+- 配置它允许的 `grant_type`
+- 配置它的展示元数据
+- 配置它下面的账号
 
-This is display/configuration support only. It is not an auth-domain truth source.
+就可以自然扩展新入口。
 
-## Basic Data For This Phase
+## 3. 账号、标识、凭证已经拆层
 
-Only the following data should be extended for login-flow expansion:
+如果把用户名、手机号、密码都直接堆到一张用户表里，后续扩展会很快变脏。
 
-- `sys_dict` / `sys_dict_item`
-  - maintain `grant_types` display items when needed by admin configuration
-- `sys_oauth_client_details`
-  - maintain the actual client grant authorization in `authorized_grant_types`
+当前拆层后：
 
-No extra auth table is required for login-way enablement at this phase.
+- `account` 解决“这个入口下是谁”
+- `identifier` 解决“用什么标识登录”
+- `credential` 解决“凭什么完成认证”
 
-## Multi-Audience Handling
+后续无论扩邮箱登录、外部标识还是更多凭证类型，都不需要推翻现有结构。
 
-For the current business boundary:
+## 4. 会话治理独立成立
 
-- member-side clients serve member accounts
-- community-side clients serve community staff accounts
-- platform-side clients serve platform staff accounts
+仅依赖 OAuth2 token 缓存无法很好表达治理动作，例如：
 
-This mapping should be expressed by client configuration and routing, not by introducing another generic subject-type system.
+- 只踢某一台设备
+- 查看某个账号有哪些会话
+- 平台侧统一撤销会话
 
-If a later phase truly needs:
+所以当前把 `auth_session` 单独建模，后续治理和审计会更稳定。
 
-- one client serving multiple audience contexts
-- one person switching contexts under the same client
+---
 
-then a separate subject-context model can be discussed later.
+## 当前登录方式实现
 
-## Session Direction
+当前项目的登录方式全部沿着 OAuth2 扩展 grant 实现。
 
-The session model should continue to build on OAuth2 authorization storage.
-
-Operationally, the project should still think in terms of:
-
-- one successful token issuance creates one authorization/session context
-- multi-device means multiple token chains
-- revoke should be possible per device or per client later
-
-This can be evolved on top of the existing authorization store instead of introducing an unrelated login-method table.
-
-## Decision Summary
-
-The current project should use:
-
-- `sys_oauth_client_details.authorized_grant_types` as the only client login-flow authorization source
-- custom OAuth2 grants as the extension mechanism for new login capabilities
-- existing OAuth2 authorization storage as the runtime session basis
-
-The current project should not use:
-
-- extra login-method authorization tables
-- parallel client-login capability models
-- subject-type abstractions without immediate runtime need
-
-## Current Implementation Status
-
-The current codebase now has these login flows:
+已经支持：
 
 - `password`
 - `otp`
 - `passkey`
 
-### Passkey Registration
+对应原则：
 
-Passkey registration is bound to the current authenticated account and uses the existing `auth_account_credential` table.
+- 客户端是否允许使用某种登录方式，只看 `authorized_grant_types`
+- 新增登录方式时，只扩 grant，不造第二套授权模型
 
-Current endpoints:
+也就是说：
 
-- `POST /passkey/current/register/options`
-- `POST /passkey/current/register`
-- `GET /passkey/current/list`
-- `DELETE /passkey/current/{credentialKey}`
+- 登录方式授权来源：`sys_oauth_client_details.authorized_grant_types`
+- 登录方式展示来源：平台侧登录方式字典和公开 `client` 元数据
 
-The registration flow uses:
+---
 
-- a short-lived Redis challenge
-- `auth_account_credential.credential_type = PASSKEY`
-- `credential_key` as the WebAuthn credential id
-- `secret_value` as serialized public key metadata and signature counter
+## 当前运行时链路
 
-### Passkey Login
+## 1. 密码登录
 
-Passkey login is implemented as a custom OAuth2 grant:
+- 前端根据 `client` 决定是否验证码、是否前端加密
+- `grant_type=password`
+- 后端按 `client + identifier` 解析 `auth_account`
+- 再按账号读取 `PASSWORD` 凭证校验
+- 登录成功后写入 `auth_session`
 
+## 2. OTP 登录
+
+- 前端请求短信验证码
+- 演示模式下接口直接返回验证码并回填输入框
+- `grant_type=otp`
+- 后端按 `client + phone` 解析账号
+- 再检查账号下 `OTP` 凭证状态
+- 登录成功后写入 `auth_session`
+
+## 3. Passkey 登录
+
+- 前端先拉取断言选项
+- 浏览器完成 WebAuthn 断言
 - `grant_type=passkey`
+- 后端按 `client + username + credentialId` 校验当前账号下的 Passkey
+- 登录成功后写入 `auth_session`
 
-Public login bootstrap endpoint:
+---
 
-- `POST /passkey/assertion/options`
+## 当前平台治理能力
 
-Token issuance still happens through:
+平台运营端已经具备以下治理入口：
 
-- `POST /oauth2/token`
+- `Client` 管理
+- 登录方式管理
+- 账号创建
+- 凭证与标识治理
+- 会话治理
+- 审计日志查询
 
-Required token request parameters:
+当前已支持的具体操作：
 
-- `grant_type=passkey`
-- `username`
-- `credentialId`
-- `clientDataJSON`
-- `authenticatorData`
-- `signature`
+- 管理 `client` 的授权登录方式
+- 管理 `client` 的展示元数据
+- 管理登录方式字典
+- 新建账号并绑定多个 `client`
+- 重置账号密码
+- 启用或停用 OTP
+- 清空账号 Passkey
+- 查看和维护账号标识
+- 查询并撤销会话
+- 查询平台治理操作和系统日志
 
-### Passkey Session Behavior
+---
 
-Passkey login enters the same session pipeline as other login flows:
+## 当前设计边界
 
-- `auth_session` is written on successful login
-- `sid` is returned in the token response
-- session revoke blocks resource access
-- session revoke also blocks `refresh_token` renewal
+这一版已经收口的边界：
 
-## Remaining Extension Points
+- 登录入口边界：由 `client` 承担
+- 登录方式边界：由 `authorized_grant_types` 承担
+- 账号边界：由 `auth_account` 承担
+- 标识边界：由 `auth_account_identifier` 承担
+- 凭证边界：由 `auth_account_credential` 承担
+- 会话边界：由 `auth_session` 承担
 
-The current implementation is already sufficient for a full-stack demo, but it is not yet a production-grade identity platform.
+当前仍保留的兼容点：
 
-### 1. Credential Lifecycle Management
+- `sys_user.password` 仍保留兼容影子
+- `auth_account.loginName / phone` 仍保留兼容字段
 
-The project already has the minimum credential model, but platform operations still need richer lifecycle control:
+但当前密码治理已经收口到账号维度：
 
-- reset password for a specific client account
-- disable only OTP for an account
-- force passkey registration
-- bulk revoke credentials after risk events
+- 平台重置密码：只影响当前账号
+- 当前用户改密：只影响当前登录账号
+- 旧的 `/user` 更新接口只有显式传 `clientIds` 才会同步目标入口的密码凭证
 
-### 2. Session Risk Controls
+---
 
-The current explicit session model supports:
+## 后续扩展方向
 
-- multi-device session listing
-- current-device logout
-- other-device logout
-- token and session revoke
+如果继续往下做，最值得继续扩展的是：
 
-Still missing are:
+## 1. 认证域继续去兼容化
 
-- trusted-device remember rules
-- refresh-token reuse detection policy
-- suspicious IP or device anomaly handling
-- global operator session dashboard
+- 让 `sys_user.password` 不再承担兼容影子
+- 让 `auth_account.loginName / phone` 进一步弱化为缓存字段
+- 进一步把认证职责彻底收回 `account / identifier / credential`
 
-### 3. Audit And Compliance
+## 2. 审计继续做深
 
-The current project exposes usable runtime state, but audit depth is still thin.
+当前已有平台审计页，但还可以继续细化：
 
-Later phases may require:
+- 登录成功与失败
+- 凭证变更
+- Passkey 注册与删除
+- 会话撤销
+- Client 配置变更
 
-- login-factor audit trail
-- passkey registration audit
-- session revoke audit
-- operator action correlation with `sid`
+## 3. 浏览器级自动化回归
 
-### Current Limits
+当前单测和构建链已经覆盖，但真实浏览器链路仍建议补：
 
-The current implementation intentionally stays minimal:
+- 密码登录
+- OTP 登录
+- Passkey 注册与登录
+- 平台治理页操作
 
-- no separate passkey table was added
-- no attestation trust-chain verification is performed
-- challenge state is Redis-only and short-lived
-- `app` and `lumen` clients are the current passkey-enabled seeds
-- no recovery code or trusted-device model exists yet
+## 4. 前端工程化优化
+
+当前前端功能已经可用，但构建仍有 chunk 过大提示，后续可以继续做：
+
+- 路由拆包
+- 平台页按模块拆分
+- 共享依赖优化
+
+---
+
+## 结论
+
+当前项目已经不是概念设计，而是一套已经落到代码、数据库、平台治理页面和演示前端里的多入口认证系统。
+
+这套模型的核心价值在于：
+
+- 支持 `1..N` 个入口
+- 支持多维凭证
+- 支持多设备会话
+- 支持平台治理
+- 与 OAuth2 协议边界一致
+- 后续扩展成本可控
+
+如果继续演进，重点不再是“再加一个登录方式”，而是继续把认证域边界收得更干净，把治理和审计做得更完整。

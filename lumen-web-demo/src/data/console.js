@@ -21,7 +21,10 @@ export function buildConsoleMenu(clientId) {
       children: [
         { index: "/dashboard/platform/clients", label: "Client 管理" },
         { index: "/dashboard/platform/login-methods", label: "登录方式管理" },
-        { index: "/dashboard/platform/accounts", label: "账号创建" }
+        { index: "/dashboard/platform/accounts", label: "账号创建" },
+        { index: "/dashboard/platform/credentials", label: "凭证治理" },
+        { index: "/dashboard/platform/sessions", label: "会话治理" },
+        { index: "/dashboard/platform/audit", label: "审计日志" }
       ]
     });
   }

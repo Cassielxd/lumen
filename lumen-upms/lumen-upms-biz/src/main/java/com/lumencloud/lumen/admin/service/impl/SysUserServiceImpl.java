@@ -42,6 +42,7 @@ import com.lumencloud.lumen.common.core.constant.SecurityConstants;
 import com.lumencloud.lumen.common.core.exception.ErrorCodes;
 import com.lumencloud.lumen.common.core.util.MsgUtils;
 import com.lumencloud.lumen.common.core.util.R;
+import com.lumencloud.lumen.common.security.service.LumenUser;
 import com.lumencloud.lumen.common.security.util.SecurityUtils;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -248,7 +249,15 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 		sysUser.setNickname(userDto.getNickname());
 		sysUser.setName(userDto.getName());
 		sysUser.setEmail(userDto.getEmail());
-		return R.ok(this.updateById(sysUser));
+		boolean updated = this.updateById(sysUser);
+		if (updated) {
+			SysUser latestUser = baseMapper.selectById(sysUser.getUserId());
+			authAccountService.syncUserProfile(latestUser);
+			authAccountService.syncOtpCredential(latestUser.getUserId(), latestUser.getPhone(),
+					resolveAccountStatus(latestUser), latestUser.getUpdateBy());
+			evictUserDetailsCache(latestUser);
+		}
+		return R.ok(updated);
 	}
 
 	/**
@@ -294,9 +303,15 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 			});
 		}
 		SysUser latestUser = baseMapper.selectById(userDto.getUserId());
-		authAccountService.syncUserIdentity(latestUser);
+		authAccountService.syncUserProfile(latestUser);
+		authAccountService.syncOtpCredential(latestUser.getUserId(), latestUser.getPhone(),
+				resolveAccountStatus(latestUser), latestUser.getUpdateBy());
 		if (userDto.getClientIds() != null) {
 			authAccountService.ensureUserAccounts(latestUser, userDto.getClientIds());
+		}
+		if (StrUtil.isNotBlank(userDto.getPassword())) {
+			authAccountService.syncPasswordCredentialForClients(latestUser.getUserId(), userDto.getClientIds(),
+					latestUser.getPassword(), latestUser.getUpdateBy());
 		}
 		evictUserDetailsCache(latestUser);
 		return Boolean.TRUE;
@@ -336,7 +351,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 		if (Objects.nonNull(sysUser)) {
 			sysUser.setLockFlag(CommonConstants.STATUS_LOCK);
 			baseMapper.updateById(sysUser);
-			authAccountService.syncUserIdentity(sysUser);
+			authAccountService.syncUserProfile(sysUser);
+			authAccountService.syncOtpCredential(sysUser.getUserId(), sysUser.getPhone(), resolveAccountStatus(sysUser),
+					sysUser.getUpdateBy());
 			evictUserDetailsCache(sysUser);
 		}
 		return R.ok();
@@ -351,7 +368,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 	@Override
 	@CacheEvict(value = CacheConstants.USER_DETAILS, key = "#userDto.username")
 	public R changePassword(UserDTO userDto) {
-		SysUser sysUser = baseMapper.selectById(SecurityUtils.getUser().getId());
+		LumenUser currentUser = SecurityUtils.getUser();
+		SysUser sysUser = baseMapper.selectById(currentUser.getId());
 		if (Objects.isNull(sysUser)) {
 			return R.failed("用户不存在");
 		}
@@ -360,7 +378,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 			return R.failed("原密码不能为空");
 		}
 
-		if (!ENCODER.matches(userDto.getPassword(), sysUser.getPassword())) {
+		String currentPasswordHash = resolveCurrentPasswordHash(sysUser);
+		if (StrUtil.isBlank(currentPasswordHash) || !ENCODER.matches(userDto.getPassword(), currentPasswordHash)) {
 			log.info("原密码错误，修改个人信息失败:{}", userDto.getUsername());
 			return R.failed(MsgUtils.getMessage(ErrorCodes.SYS_USER_UPDATE_PASSWORDERROR));
 		}
@@ -369,12 +388,23 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 			return R.failed("新密码不能为空");
 		}
 		String password = ENCODER.encode(userDto.getNewpassword1());
+		String operator = StrUtil.isNotBlank(currentUser.getUsername()) ? currentUser.getUsername() : sysUser.getUsername();
 
-		this.update(Wrappers.<SysUser>lambdaUpdate()
-			.set(SysUser::getPassword, password)
-			.eq(SysUser::getUserId, sysUser.getUserId()));
+		SysUser updateUser = new SysUser();
+		updateUser.setUserId(sysUser.getUserId());
+		updateUser.setPassword(password);
+		updateUser.setUpdateBy(operator);
+		updateUser.setUpdateTime(LocalDateTime.now());
+		baseMapper.updateById(updateUser);
 		sysUser.setPassword(password);
-		authAccountService.syncUserIdentity(sysUser);
+		sysUser.setUpdateBy(operator);
+		sysUser.setUpdateTime(updateUser.getUpdateTime());
+		if (currentUser.getAccountId() != null) {
+			authAccountService.updatePasswordCredential(currentUser.getAccountId(), password, operator);
+		}
+		else {
+			authAccountService.syncPasswordCredential(sysUser.getUserId(), password, operator);
+		}
 		evictUserDetailsCache(sysUser);
 		return R.ok();
 	}
@@ -388,7 +418,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 	public R checkPassword(String password) {
 		SysUser sysUser = baseMapper.selectById(SecurityUtils.getUser().getId());
 
-		if (!ENCODER.matches(password, sysUser.getPassword())) {
+		String currentPasswordHash = resolveCurrentPasswordHash(sysUser);
+		if (StrUtil.isBlank(currentPasswordHash) || !ENCODER.matches(password, currentPasswordHash)) {
 			log.info("原密码错误");
 			return R.failed("密码输入错误");
 		}
@@ -422,6 +453,25 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 			return "PASSKEY";
 		}
 		return null;
+	}
+
+	private String resolveAccountStatus(SysUser user) {
+		return StrUtil.isNotBlank(user.getLockFlag()) ? user.getLockFlag() : CommonConstants.STATUS_NORMAL;
+	}
+
+	private String resolveCurrentPasswordHash(SysUser sysUser) {
+		if (sysUser == null) {
+			return null;
+		}
+		if (SecurityUtils.getUser() != null && SecurityUtils.getUser().getAccountId() != null) {
+			AuthAccountCredential credential = authAccountService
+				.getCredential(SecurityUtils.getUser().getAccountId(), "PASSWORD")
+				.orElse(null);
+			if (credential != null && StrUtil.isNotBlank(credential.getSecretValue())) {
+				return credential.getSecretValue();
+			}
+		}
+		return sysUser.getPassword();
 	}
 
 	private void evictUserDetailsCache(SysUser user) {

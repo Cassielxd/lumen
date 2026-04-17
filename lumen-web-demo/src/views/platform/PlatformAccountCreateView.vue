@@ -6,7 +6,9 @@
           <div class="list-row">
             <div>
               <div style="font-size: 16px; font-weight: 700; color: #0f172a;">新建账号</div>
-              <div class="section-subtitle">一个用户可绑定多个 client；当前版本角色和岗位仍然是用户级，不按 client 拆分。</div>
+              <div class="section-subtitle">
+                一个用户可以绑定多个 Client。当前版本中的角色和岗位仍然是用户级信息，不按 Client 拆分。
+              </div>
             </div>
             <el-button type="primary" :loading="saving" @click="submitForm">创建账号</el-button>
           </div>
@@ -39,7 +41,12 @@
             </el-form-item>
             <el-form-item label="绑定 Client" required>
               <el-select v-model="form.clientIds" multiple collapse-tags collapse-tags-tooltip style="width: 100%;">
-                <el-option v-for="item in clientOptions" :key="item.clientId" :label="item.clientId" :value="item.clientId" />
+                <el-option
+                  v-for="item in clientOptions"
+                  :key="item.clientId"
+                  :label="item.clientId"
+                  :value="item.clientId"
+                />
               </el-select>
             </el-form-item>
             <el-form-item label="角色">

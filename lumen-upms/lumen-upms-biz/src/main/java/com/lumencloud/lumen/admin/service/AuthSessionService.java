@@ -22,4 +22,8 @@ public interface AuthSessionService {
 
 	Boolean logoutOtherSessions(Long accountId, String currentSid);
 
+	List<AuthSessionVO> listAll(String clientId, String principalName, String status);
+
+	Boolean adminLogoutBySid(String sid);
+
 }
