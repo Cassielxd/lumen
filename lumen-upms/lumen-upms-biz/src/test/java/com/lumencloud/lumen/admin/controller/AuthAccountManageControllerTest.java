@@ -7,15 +7,19 @@ import com.lumencloud.lumen.admin.api.vo.AuthAccountCredentialManageVO;
 import com.lumencloud.lumen.admin.api.vo.AuthAccountIdentifierManageVO;
 import com.lumencloud.lumen.admin.service.AuthAccountService;
 import com.lumencloud.lumen.common.core.util.R;
+import com.lumencloud.lumen.common.security.annotation.HasPermission;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
@@ -113,6 +117,24 @@ class AuthAccountManageControllerTest {
 
 		assertTrue(Boolean.TRUE.equals(response.getData()));
 		verify(authAccountService).removeIdentifier(org.mockito.ArgumentMatchers.eq(2001L), anyString());
+	}
+
+	@Test
+	void manageEndpointsShouldRequireAdminPermission() throws NoSuchMethodException {
+		assertHasPermission("list", new Class<?>[] { String.class, String.class, String.class });
+		assertHasPermission("resetPassword", new Class<?>[] { AuthAccountPasswordResetDTO.class });
+		assertHasPermission("updateOtpStatus", new Class<?>[] { AuthAccountCredentialStatusDTO.class });
+		assertHasPermission("clearPasskeys", new Class<?>[] { Long.class });
+		assertHasPermission("identifiers", new Class<?>[] { Long.class });
+		assertHasPermission("saveIdentifier", new Class<?>[] { AuthAccountIdentifierUpsertDTO.class });
+		assertHasPermission("removeIdentifier", new Class<?>[] { Long.class });
+	}
+
+	private void assertHasPermission(String methodName, Class<?>[] parameterTypes) throws NoSuchMethodException {
+		Method method = AuthAccountManageController.class.getDeclaredMethod(methodName, parameterTypes);
+		HasPermission annotation = method.getAnnotation(HasPermission.class);
+		assertNotNull(annotation);
+		assertArrayEquals(new String[] { "auth_account_manage" }, annotation.value());
 	}
 
 }

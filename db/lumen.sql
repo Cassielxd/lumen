@@ -488,8 +488,6 @@ DROP TABLE IF EXISTS `sys_user`;
 CREATE TABLE `sys_user` (
   `user_id` bigint NOT NULL COMMENT '用户ID',
   `username` varchar(64)  DEFAULT NULL COMMENT '用户名',
-  `password` varchar(255)  DEFAULT NULL COMMENT '密码',
-  `salt` varchar(255)  DEFAULT NULL COMMENT '盐值',
   `phone` varchar(20)  DEFAULT NULL COMMENT '电话号码',
   `avatar` varchar(255)  DEFAULT NULL COMMENT '头像',
   `nickname` varchar(64)  DEFAULT NULL COMMENT '昵称',
@@ -510,7 +508,7 @@ CREATE TABLE `sys_user` (
 -- Records of sys_user
 -- ----------------------------
 BEGIN;
-INSERT INTO `sys_user` VALUES (1, 'admin', '$2a$10$c/Ae0pRjJtMZg3BnvVpO.eIK6WYWVbKTzqgdy3afR7w.vd.xi3Mgy', '', '17034642999', '/admin/sys-file/s3demo/7ff4ca6b7bf446f3a5a13ac016dc21af.png', '管理员', '管理员', 'lumencloud@qq.com', 4, ' ', 'admin', '2018-04-20 07:15:18', '2023-07-07 14:55:40', '0', '0');
+INSERT INTO `sys_user` VALUES (1, 'admin', '17034642999', '/admin/sys-file/s3demo/7ff4ca6b7bf446f3a5a13ac016dc21af.png', '管理员', '管理员', 'lumencloud@qq.com', 4, ' ', 'admin', '2018-04-20 07:15:18', '2023-07-07 14:55:40', '0', '0');
 COMMIT;
 
 -- ----------------------------
@@ -521,17 +519,13 @@ CREATE TABLE `auth_account` (
   `account_id` bigint NOT NULL COMMENT 'Account ID',
   `user_id` bigint NOT NULL COMMENT 'User ID',
   `client_id` varchar(32) NOT NULL COMMENT 'Client ID',
-  `login_name` varchar(64) DEFAULT NULL COMMENT 'Login name',
-  `phone` varchar(20) DEFAULT NULL COMMENT 'Phone',
   `status` char(1) DEFAULT '0' COMMENT 'Status',
   `create_by` varchar(64) DEFAULT NULL COMMENT 'Created by',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
   `update_by` varchar(64) DEFAULT NULL COMMENT 'Updated by',
   `update_time` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
   PRIMARY KEY (`account_id`) USING BTREE,
-  UNIQUE KEY `uk_auth_account_client_user` (`client_id`,`user_id`) USING BTREE,
-  UNIQUE KEY `uk_auth_account_client_login_name` (`client_id`,`login_name`) USING BTREE,
-  UNIQUE KEY `uk_auth_account_client_phone` (`client_id`,`phone`) USING BTREE
+  UNIQUE KEY `uk_auth_account_client_user` (`client_id`,`user_id`) USING BTREE
 ) ENGINE=InnoDB COMMENT='Client-bound authentication account';
 
 -- ----------------------------
@@ -560,12 +554,12 @@ CREATE TABLE `auth_account_identifier` (
 -- Records of auth_account
 -- ----------------------------
 BEGIN;
-INSERT INTO `auth_account` VALUES (100001, 1, 'app', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT INTO `auth_account` VALUES (100002, 1, 'daemon', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT INTO `auth_account` VALUES (100003, 1, 'gen', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT INTO `auth_account` VALUES (100004, 1, 'mp', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT INTO `auth_account` VALUES (100005, 1, 'lumen', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT INTO `auth_account` VALUES (100006, 1, 'test', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account` VALUES (100001, 1, 'app', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account` VALUES (100002, 1, 'daemon', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account` VALUES (100003, 1, 'gen', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account` VALUES (100004, 1, 'mp', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account` VALUES (100005, 1, 'lumen', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT INTO `auth_account` VALUES (100006, 1, 'test', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
 COMMIT;
 
 -- ----------------------------

@@ -10,6 +10,7 @@ import com.lumencloud.lumen.admin.api.vo.PasskeyAccountInfoVO;
 import com.lumencloud.lumen.admin.api.vo.PasskeyCredentialVO;
 import com.lumencloud.lumen.admin.mapper.AuthAccountCredentialMapper;
 import com.lumencloud.lumen.admin.mapper.AuthAccountMapper;
+import com.lumencloud.lumen.admin.service.AuthAccountService;
 import com.lumencloud.lumen.admin.service.PasskeyService;
 import com.lumencloud.lumen.common.core.constant.CommonConstants;
 import com.lumencloud.lumen.common.security.passkey.PasskeyChallengeContext;
@@ -37,11 +38,15 @@ public class PasskeyServiceImpl implements PasskeyService {
 
 	private static final String CREDENTIAL_TYPE_PASSKEY = "PASSKEY";
 
+	private static final String IDENTIFIER_USERNAME = "USERNAME";
+
 	private static final String RP_NAME = "Lumen";
 
 	private final AuthAccountMapper authAccountMapper;
 
 	private final AuthAccountCredentialMapper authAccountCredentialMapper;
+
+	private final AuthAccountService authAccountService;
 
 	private final PasskeyChallengeService passkeyChallengeService;
 
@@ -56,7 +61,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 		challengeContext.setClientId(account.getClientId());
 		challengeContext.setAccountId(account.getAccountId());
 		challengeContext.setUserId(account.getUserId());
-		challengeContext.setUsername(account.getLoginName());
+		challengeContext.setUsername(passkeyUserName);
 		challengeContext.setDisplayName(passkeyDisplayName);
 		challengeContext.setRpId(PasskeyWebAuthnUtils.resolveRpId(request));
 		challengeContext.setOrigin(PasskeyWebAuthnUtils.resolveOrigin(request));
@@ -105,6 +110,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 	@Transactional(rollbackFor = Exception.class)
 	public PasskeyCredentialVO registerCurrentPasskey(HttpServletRequest request, PasskeyRegistrationFinishDTO finishDTO) {
 		AuthAccount account = requireCurrentAccount();
+		String operator = resolveAccountUsername(account);
 		String challenge = PasskeyWebAuthnUtils.extractChallenge(finishDTO.getClientDataJSON());
 		PasskeyChallengeContext challengeContext = passkeyChallengeService
 			.consume(PasskeyChallengeContext.TYPE_REGISTRATION, challenge)
@@ -129,7 +135,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 			credential.setAccountId(account.getAccountId());
 			credential.setCredentialType(CREDENTIAL_TYPE_PASSKEY);
 			credential.setCredentialKey(registration.credentialId());
-			credential.setCreateBy(account.getLoginName());
+			credential.setCreateBy(operator);
 			credential.setCreateTime(LocalDateTime.now());
 		}
 
@@ -143,7 +149,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 		credential.setSecretValue(PasskeyWebAuthnUtils.writeJson(payload));
 		credential.setStatus(CommonConstants.STATUS_NORMAL);
 		credential.setVerifiedAt(registration.verifiedAt());
-		credential.setUpdateBy(account.getLoginName());
+		credential.setUpdateBy(operator);
 		credential.setUpdateTime(LocalDateTime.now());
 		saveCredential(credential);
 		return toPublicView(credential);
@@ -173,9 +179,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 		if (!StringUtils.hasText(clientId) || !StringUtils.hasText(username)) {
 			return null;
 		}
-		AuthAccount account = authAccountMapper.selectOne(Wrappers.<AuthAccount>lambdaQuery()
-			.eq(AuthAccount::getClientId, clientId)
-			.eq(AuthAccount::getLoginName, username), false);
+		AuthAccount account = authAccountService.resolveAccount(clientId, username, null).orElse(null);
 		if (account == null || !CommonConstants.STATUS_NORMAL.equals(account.getStatus())) {
 			return null;
 		}
@@ -183,7 +187,7 @@ public class PasskeyServiceImpl implements PasskeyService {
 		accountInfo.setAccountId(account.getAccountId());
 		accountInfo.setUserId(account.getUserId());
 		accountInfo.setClientId(account.getClientId());
-		accountInfo.setUsername(account.getLoginName());
+		accountInfo.setUsername(resolveAccountUsername(account));
 		accountInfo.setCredentials(listPasskeyCredentials(account.getAccountId()).stream().map(this::toInternalView).toList());
 		return accountInfo;
 	}
@@ -269,11 +273,16 @@ public class PasskeyServiceImpl implements PasskeyService {
 	}
 
 	private String resolvePasskeyUserName(AuthAccount account) {
-		return account.getClientId() + ":" + account.getLoginName();
+		return account.getClientId() + ":" + resolveAccountUsername(account);
 	}
 
 	private String resolvePasskeyDisplayName(AuthAccount account) {
-		return account.getClientId() + " / " + account.getLoginName();
+		return account.getClientId() + " / " + resolveAccountUsername(account);
+	}
+
+	private String resolveAccountUsername(AuthAccount account) {
+		return authAccountService.getPrimaryIdentifierValue(account.getAccountId(), IDENTIFIER_USERNAME)
+			.orElse("account-" + account.getAccountId());
 	}
 
 }

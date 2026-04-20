@@ -5,15 +5,19 @@ import com.lumencloud.lumen.admin.api.entity.AuthAccount;
 import com.lumencloud.lumen.admin.api.entity.AuthAccountCredential;
 import com.lumencloud.lumen.admin.api.entity.AuthAccountIdentifier;
 import com.lumencloud.lumen.admin.api.entity.SysUser;
+import com.lumencloud.lumen.admin.api.vo.AuthAccountCredentialManageVO;
 import com.lumencloud.lumen.admin.api.vo.AuthAccountIdentifierManageVO;
 import com.lumencloud.lumen.admin.mapper.AuthAccountCredentialMapper;
 import com.lumencloud.lumen.admin.mapper.AuthAccountIdentifierMapper;
 import com.lumencloud.lumen.admin.mapper.AuthAccountMapper;
 import com.lumencloud.lumen.admin.mapper.SysUserMapper;
 import com.lumencloud.lumen.admin.service.AuthAccountService;
-import com.lumencloud.lumen.admin.api.vo.AuthAccountCredentialManageVO;
+import com.lumencloud.lumen.common.core.constant.CacheConstants;
 import com.lumencloud.lumen.common.core.constant.CommonConstants;
+import com.lumencloud.lumen.common.core.constant.SecurityConstants;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -24,12 +28,15 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Authentication account service implementation.
@@ -43,6 +50,8 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 	private static final String CREDENTIAL_PASSWORD = "PASSWORD";
 
 	private static final String CREDENTIAL_OTP = "OTP";
+
+	private static final String CREDENTIAL_PASSKEY = "PASSKEY";
 
 	private static final String IDENTIFIER_USERNAME = "USERNAME";
 
@@ -64,6 +73,8 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 
 	private final SysUserMapper sysUserMapper;
 
+	private final CacheManager cacheManager;
+
 	@Override
 	public Optional<AuthAccount> resolveAccount(String clientId, String loginName, String phone) {
 		if (!StringUtils.hasText(clientId)) {
@@ -74,18 +85,10 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			if (account.isPresent()) {
 				return account;
 			}
-			return Optional.ofNullable(authAccountMapper.selectOne(Wrappers.<AuthAccount>lambdaQuery()
-				.eq(AuthAccount::getClientId, clientId)
-				.eq(AuthAccount::getLoginName, loginName), false));
+			return resolveByIdentifier(clientId, IDENTIFIER_EMAIL, loginName);
 		}
 		if (StringUtils.hasText(phone)) {
-			Optional<AuthAccount> account = resolveByIdentifier(clientId, IDENTIFIER_PHONE, phone);
-			if (account.isPresent()) {
-				return account;
-			}
-			return Optional.ofNullable(authAccountMapper.selectOne(Wrappers.<AuthAccount>lambdaQuery()
-				.eq(AuthAccount::getClientId, clientId)
-				.eq(AuthAccount::getPhone, phone), false));
+			return resolveByIdentifier(clientId, IDENTIFIER_PHONE, phone);
 		}
 		return Optional.empty();
 	}
@@ -112,7 +115,6 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (user == null || user.getUserId() == null || CollectionUtils.isEmpty(clientIds)) {
 			return;
 		}
-
 		Set<String> normalizedClientIds = new LinkedHashSet<>();
 		clientIds.stream().filter(StringUtils::hasText).forEach(normalizedClientIds::add);
 		if (normalizedClientIds.isEmpty()) {
@@ -130,8 +132,6 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 				account.setCreateBy(StringUtils.hasText(user.getUpdateBy()) ? user.getUpdateBy() : user.getCreateBy());
 				account.setCreateTime(user.getCreateTime());
 			}
-			account.setLoginName(user.getUsername());
-			account.setPhone(user.getPhone());
 			account.setStatus(resolveAccountStatus(user));
 			account.setUpdateBy(user.getUpdateBy());
 			account.setUpdateTime(LocalDateTime.now());
@@ -142,7 +142,6 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 				authAccountMapper.updateById(account);
 			}
 			syncIdentifiers(account, user);
-			upsertPasswordCredential(account, user.getPassword(), account.getStatus(), user.getUpdateBy(), user.getCreateBy());
 			upsertOtpCredential(account, user.getPhone(), account.getStatus(), user.getUpdateBy(), user.getCreateBy());
 		}
 	}
@@ -155,8 +154,6 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		}
 		List<AuthAccount> accounts = listByUserId(user.getUserId());
 		for (AuthAccount account : accounts) {
-			account.setLoginName(user.getUsername());
-			account.setPhone(user.getPhone());
 			account.setStatus(resolveAccountStatus(user));
 			account.setUpdateBy(user.getUpdateBy());
 			account.setUpdateTime(LocalDateTime.now());
@@ -171,10 +168,10 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (userId == null || !StringUtils.hasText(encodedPassword)) {
 			return;
 		}
-		List<AuthAccount> accounts = listByUserId(userId);
-		for (AuthAccount account : accounts) {
+		listByUserId(userId).forEach(account -> {
 			upsertPasswordCredential(account, encodedPassword, account.getStatus(), updatedBy, updatedBy);
-		}
+			evictUserDetailsCache(account);
+		});
 	}
 
 	@Override
@@ -189,13 +186,12 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (normalizedClientIds.isEmpty()) {
 			return;
 		}
-		List<AuthAccount> accounts = listByUserId(userId);
-		for (AuthAccount account : accounts) {
-			if (!normalizedClientIds.contains(account.getClientId())) {
-				continue;
-			}
-			upsertPasswordCredential(account, encodedPassword, account.getStatus(), updatedBy, updatedBy);
-		}
+		listByUserId(userId).stream()
+			.filter(account -> normalizedClientIds.contains(account.getClientId()))
+			.forEach(account -> {
+				upsertPasswordCredential(account, encodedPassword, account.getStatus(), updatedBy, updatedBy);
+				evictUserDetailsCache(account);
+			});
 	}
 
 	@Override
@@ -209,6 +205,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			return;
 		}
 		upsertPasswordCredential(account, encodedPassword, account.getStatus(), updatedBy, updatedBy);
+		evictUserDetailsCache(account);
 	}
 
 	@Override
@@ -217,10 +214,10 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (userId == null) {
 			return;
 		}
-		List<AuthAccount> accounts = listByUserId(userId);
-		for (AuthAccount account : accounts) {
+		listByUserId(userId).forEach(account -> {
 			upsertOtpCredential(account, phone, status, updatedBy, updatedBy);
-		}
+			evictUserDetailsCache(account);
+		});
 	}
 
 	@Override
@@ -230,15 +227,15 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			return;
 		}
 		List<AuthAccount> accounts = authAccountMapper.selectList(
-				Wrappers.<AuthAccount>lambdaQuery().in(AuthAccount::getUserId, userIds));
+			Wrappers.<AuthAccount>lambdaQuery().in(AuthAccount::getUserId, userIds));
 		if (accounts.isEmpty()) {
 			return;
 		}
 		List<Long> accountIds = accounts.stream().map(AuthAccount::getAccountId).toList();
-		authAccountIdentifierMapper
-			.delete(Wrappers.<AuthAccountIdentifier>lambdaQuery().in(AuthAccountIdentifier::getAccountId, accountIds));
+		authAccountIdentifierMapper.delete(
+			Wrappers.<AuthAccountIdentifier>lambdaQuery().in(AuthAccountIdentifier::getAccountId, accountIds));
 		authAccountCredentialMapper.delete(
-				Wrappers.<AuthAccountCredential>lambdaQuery().in(AuthAccountCredential::getAccountId, accountIds));
+			Wrappers.<AuthAccountCredential>lambdaQuery().in(AuthAccountCredential::getAccountId, accountIds));
 		authAccountMapper.deleteBatchIds(accountIds);
 	}
 
@@ -254,10 +251,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 	public List<AuthAccountCredentialManageVO> listManageAccounts(String clientId, String loginName, String phone) {
 		List<AuthAccount> accounts = authAccountMapper.selectList(Wrappers.<AuthAccount>lambdaQuery()
 			.eq(StringUtils.hasText(clientId), AuthAccount::getClientId, clientId)
-			.like(StringUtils.hasText(loginName), AuthAccount::getLoginName, loginName)
-			.eq(StringUtils.hasText(phone), AuthAccount::getPhone, phone)
 			.orderByAsc(AuthAccount::getClientId)
-			.orderByAsc(AuthAccount::getLoginName)
 			.orderByDesc(AuthAccount::getCreateTime));
 		if (accounts.isEmpty()) {
 			return List.of();
@@ -274,7 +268,11 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			.orderByAsc(AuthAccountIdentifier::getIdentifierType)
 			.orderByDesc(AuthAccountIdentifier::getPrimaryFlag)
 			.orderByAsc(AuthAccountIdentifier::getCreateTime));
-		return accounts.stream().map(account -> toManageView(account, credentials, identifiers)).toList();
+		return accounts.stream()
+			.map(account -> toManageView(account, credentials, identifiers))
+			.filter(view -> matchesLoginName(view, loginName))
+			.filter(view -> matchesPhone(view, phone))
+			.toList();
 	}
 
 	@Override
@@ -283,13 +281,8 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (accountId == null || !StringUtils.hasText(rawPassword)) {
 			return Boolean.FALSE;
 		}
-		AuthAccount account = authAccountMapper.selectById(accountId);
-		if (account == null) {
-			return Boolean.FALSE;
-		}
 		String encodedPassword = PASSWORD_ENCODER.encode(rawPassword);
 		updatePasswordCredential(accountId, encodedPassword, updatedBy);
-		syncLegacyUserPassword(account.getUserId(), encodedPassword, updatedBy);
 		return Boolean.TRUE;
 	}
 
@@ -303,10 +296,12 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (account == null) {
 			return Boolean.FALSE;
 		}
-		if (CommonConstants.STATUS_NORMAL.equals(status) && !StringUtils.hasText(account.getPhone())) {
+		String phone = getPrimaryIdentifierValue(accountId, IDENTIFIER_PHONE).orElse(null);
+		if (CommonConstants.STATUS_NORMAL.equals(status) && !StringUtils.hasText(phone)) {
 			return Boolean.FALSE;
 		}
-		upsertOtpCredential(account, account.getPhone(), status, updatedBy, updatedBy);
+		upsertOtpCredential(account, phone, status, updatedBy, updatedBy);
+		evictUserDetailsCache(account);
 		return Boolean.TRUE;
 	}
 
@@ -316,10 +311,14 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (accountId == null) {
 			return Boolean.FALSE;
 		}
+		AuthAccount account = authAccountMapper.selectById(accountId);
+		if (account == null) {
+			return Boolean.FALSE;
+		}
 		List<AuthAccountCredential> credentials = authAccountCredentialMapper.selectList(Wrappers
 			.<AuthAccountCredential>lambdaQuery()
 			.eq(AuthAccountCredential::getAccountId, accountId)
-			.eq(AuthAccountCredential::getCredentialType, "PASSKEY")
+			.eq(AuthAccountCredential::getCredentialType, CREDENTIAL_PASSKEY)
 			.eq(AuthAccountCredential::getStatus, CommonConstants.STATUS_NORMAL));
 		credentials.forEach(credential -> {
 			credential.setStatus(CommonConstants.STATUS_LOCK);
@@ -327,21 +326,13 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			credential.setUpdateTime(LocalDateTime.now());
 			authAccountCredentialMapper.updateById(credential);
 		});
+		evictUserDetailsCache(account);
 		return Boolean.TRUE;
 	}
 
 	@Override
 	public List<AuthAccountIdentifierManageVO> listIdentifiers(Long accountId) {
-		if (accountId == null) {
-			return List.of();
-		}
-		List<AuthAccountIdentifier> identifiers = authAccountIdentifierMapper.selectList(Wrappers
-			.<AuthAccountIdentifier>lambdaQuery()
-			.eq(AuthAccountIdentifier::getAccountId, accountId)
-			.orderByAsc(AuthAccountIdentifier::getIdentifierType)
-			.orderByDesc(AuthAccountIdentifier::getPrimaryFlag)
-			.orderByAsc(AuthAccountIdentifier::getCreateTime));
-		return identifiers.stream().map(this::toIdentifierView).toList();
+		return listIdentifierEntities(accountId).stream().map(this::toIdentifierView).toList();
 	}
 
 	@Override
@@ -361,11 +352,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			return Boolean.FALSE;
 		}
 
-		AuthAccountIdentifier duplicate = authAccountIdentifierMapper.selectOne(Wrappers
-			.<AuthAccountIdentifier>lambdaQuery()
-			.eq(AuthAccountIdentifier::getClientId, account.getClientId())
-			.eq(AuthAccountIdentifier::getIdentifierType, normalizedType)
-			.eq(AuthAccountIdentifier::getIdentifierValue, normalizedValue), false);
+		AuthAccountIdentifier duplicate = findIdentifierByClient(account.getClientId(), normalizedType, normalizedValue);
 		if (duplicate != null && !accountId.equals(duplicate.getAccountId())) {
 			return Boolean.FALSE;
 		}
@@ -389,7 +376,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		identifier.setIdentifierType(normalizedType);
 		identifier.setIdentifierValue(normalizedValue);
 		identifier.setStatus(account.getStatus());
-		identifier.setVerifiedAt(resolveIdentifierVerifiedAt(normalizedType, normalizedValue, account));
+		identifier.setVerifiedAt(resolveIdentifierVerifiedAt(normalizedType, normalizedValue));
 		identifier.setUpdateBy(updatedBy);
 		identifier.setUpdateTime(LocalDateTime.now());
 
@@ -399,6 +386,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		else {
 			authAccountIdentifierMapper.updateById(identifier);
 		}
+		evictUserDetailsCache(account, List.of(normalizedValue));
 		return Boolean.TRUE;
 	}
 
@@ -415,7 +403,36 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		if (PRIMARY_FLAG_YES.equals(identifier.getPrimaryFlag())) {
 			return Boolean.FALSE;
 		}
-		return authAccountIdentifierMapper.deleteById(identifierId) > 0;
+		AuthAccount account = authAccountMapper.selectById(identifier.getAccountId());
+		boolean removed = authAccountIdentifierMapper.deleteById(identifierId) > 0;
+		if (removed) {
+			evictUserDetailsCache(account, List.of(identifier.getIdentifierValue()));
+		}
+		return removed;
+	}
+
+	@Override
+	public Optional<String> getPrimaryIdentifierValue(Long accountId, String identifierType) {
+		if (accountId == null || !StringUtils.hasText(identifierType)) {
+			return Optional.empty();
+		}
+		String normalizedType = normalizeIdentifierType(identifierType);
+		AuthAccountIdentifier primaryIdentifier = authAccountIdentifierMapper.selectOne(Wrappers
+			.<AuthAccountIdentifier>lambdaQuery()
+			.eq(AuthAccountIdentifier::getAccountId, accountId)
+			.eq(AuthAccountIdentifier::getIdentifierType, normalizedType)
+			.eq(AuthAccountIdentifier::getPrimaryFlag, PRIMARY_FLAG_YES), false);
+		if (primaryIdentifier != null && StringUtils.hasText(primaryIdentifier.getIdentifierValue())) {
+			return Optional.of(primaryIdentifier.getIdentifierValue());
+		}
+		AuthAccountIdentifier fallbackIdentifier = authAccountIdentifierMapper.selectOne(Wrappers
+			.<AuthAccountIdentifier>lambdaQuery()
+			.eq(AuthAccountIdentifier::getAccountId, accountId)
+			.eq(AuthAccountIdentifier::getIdentifierType, normalizedType)
+			.orderByDesc(AuthAccountIdentifier::getPrimaryFlag)
+			.orderByDesc(AuthAccountIdentifier::getVerifiedAt)
+			.orderByAsc(AuthAccountIdentifier::getCreateTime), false);
+		return fallbackIdentifier == null ? Optional.empty() : Optional.ofNullable(fallbackIdentifier.getIdentifierValue());
 	}
 
 	private void syncIdentifiers(AuthAccount account, SysUser user) {
@@ -437,6 +454,10 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 				.filter(identifier -> PRIMARY_FLAG_YES.equals(identifier.getPrimaryFlag()))
 				.forEach(identifier -> authAccountIdentifierMapper.deleteById(identifier.getIdentifierId()));
 			return;
+		}
+		AuthAccountIdentifier duplicate = findIdentifierByClient(account.getClientId(), type, normalizedValue);
+		if (duplicate != null && !Objects.equals(duplicate.getAccountId(), account.getAccountId())) {
+			throw new IllegalArgumentException("identifier already bound to another account");
 		}
 
 		AuthAccountIdentifier target = identifiers.stream()
@@ -476,7 +497,7 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		target.setIdentifierValue(normalizedValue);
 		target.setPrimaryFlag(PRIMARY_FLAG_YES);
 		target.setStatus(account.getStatus());
-		target.setVerifiedAt(verified ? LocalDateTime.now() : resolveIdentifierVerifiedAt(type, normalizedValue, account));
+		target.setVerifiedAt(verified ? LocalDateTime.now() : resolveIdentifierVerifiedAt(type, normalizedValue));
 		target.setUpdateBy(account.getUpdateBy());
 		target.setUpdateTime(LocalDateTime.now());
 
@@ -489,20 +510,17 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 	}
 
 	private void refreshIdentifierStatus(AuthAccount account) {
-		List<AuthAccountIdentifier> identifiers = authAccountIdentifierMapper.selectList(Wrappers
-			.<AuthAccountIdentifier>lambdaQuery()
-			.eq(AuthAccountIdentifier::getAccountId, account.getAccountId()));
-		for (AuthAccountIdentifier identifier : identifiers) {
+		listIdentifierEntities(account.getAccountId()).forEach(identifier -> {
 			if (Objects.equals(identifier.getStatus(), account.getStatus())
 					&& Objects.equals(identifier.getClientId(), account.getClientId())) {
-				continue;
+				return;
 			}
 			identifier.setClientId(account.getClientId());
 			identifier.setStatus(account.getStatus());
 			identifier.setUpdateBy(account.getUpdateBy());
 			identifier.setUpdateTime(LocalDateTime.now());
 			authAccountIdentifierMapper.updateById(identifier);
-		}
+		});
 	}
 
 	private String normalizeIdentifierType(String identifierType) {
@@ -520,12 +538,9 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		return normalizedValue;
 	}
 
-	private LocalDateTime resolveIdentifierVerifiedAt(String identifierType, String identifierValue, AuthAccount account) {
-		if (IDENTIFIER_USERNAME.equals(identifierType) && identifierValue.equals(account.getLoginName())) {
+	private LocalDateTime resolveIdentifierVerifiedAt(String identifierType, String identifierValue) {
+		if (IDENTIFIER_USERNAME.equals(identifierType) && StringUtils.hasText(identifierValue)) {
 			return LocalDateTime.now();
-		}
-		if (IDENTIFIER_PHONE.equals(identifierType) && identifierValue.equals(account.getPhone())) {
-			return null;
 		}
 		return null;
 	}
@@ -583,11 +598,15 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 	}
 
 	private Optional<AuthAccount> resolveByIdentifier(String clientId, String identifierType, String identifierValue) {
+		String normalizedValue = normalizeIdentifierValue(identifierType, identifierValue);
+		if (!StringUtils.hasText(normalizedValue)) {
+			return Optional.empty();
+		}
 		AuthAccountIdentifier identifier = authAccountIdentifierMapper.selectOne(Wrappers
 			.<AuthAccountIdentifier>lambdaQuery()
 			.eq(AuthAccountIdentifier::getClientId, clientId)
 			.eq(AuthAccountIdentifier::getIdentifierType, identifierType)
-			.eq(AuthAccountIdentifier::getIdentifierValue, identifierValue)
+			.eq(AuthAccountIdentifier::getIdentifierValue, normalizedValue)
 			.eq(AuthAccountIdentifier::getStatus, CommonConstants.STATUS_NORMAL), false);
 		if (identifier == null || identifier.getAccountId() == null) {
 			return Optional.empty();
@@ -604,16 +623,65 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		}
 	}
 
-	private void syncLegacyUserPassword(Long userId, String encodedPassword, String updatedBy) {
-		if (userId == null || !StringUtils.hasText(encodedPassword)) {
+	private AuthAccountIdentifier findIdentifierByClient(String clientId, String identifierType, String identifierValue) {
+		String normalizedValue = normalizeIdentifierValue(identifierType, identifierValue);
+		if (!StringUtils.hasText(normalizedValue)) {
+			return null;
+		}
+		return authAccountIdentifierMapper.selectOne(Wrappers.<AuthAccountIdentifier>lambdaQuery()
+			.eq(AuthAccountIdentifier::getClientId, clientId)
+			.eq(AuthAccountIdentifier::getIdentifierType, identifierType)
+			.eq(AuthAccountIdentifier::getIdentifierValue, normalizedValue), false);
+	}
+
+	private void evictUserDetailsCache(AuthAccount account) {
+		evictUserDetailsCache(account, List.of());
+	}
+
+	private void evictUserDetailsCache(AuthAccount account, Collection<String> additionalPrincipals) {
+		if (account == null) {
 			return;
 		}
-		SysUser user = new SysUser();
-		user.setUserId(userId);
-		user.setPassword(encodedPassword);
-		user.setUpdateBy(updatedBy);
-		user.setUpdateTime(LocalDateTime.now());
-		sysUserMapper.updateById(user);
+		Cache cache = cacheManager.getCache(CacheConstants.USER_DETAILS);
+		if (cache == null) {
+			return;
+		}
+		Set<String> principals = new LinkedHashSet<>();
+		SysUser user = sysUserMapper.selectById(account.getUserId());
+		if (user != null) {
+			collectPrincipal(principals, user.getUsername());
+			collectPrincipal(principals, user.getPhone());
+			collectPrincipal(principals, user.getEmail());
+		}
+		listIdentifierEntities(account.getAccountId()).stream()
+			.map(AuthAccountIdentifier::getIdentifierValue)
+			.forEach(identifierValue -> collectPrincipal(principals, identifierValue));
+		if (additionalPrincipals != null) {
+			additionalPrincipals.forEach(principal -> collectPrincipal(principals, principal));
+		}
+		principals.forEach(principal -> evictCacheKeyVariants(cache, account.getClientId(), principal));
+	}
+
+	private void collectPrincipal(Set<String> principals, String principal) {
+		if (!StringUtils.hasText(principal)) {
+			return;
+		}
+		principals.add(principal);
+		if (principal.contains("@")) {
+			principals.add(principal.toLowerCase(Locale.ROOT));
+		}
+	}
+
+	private void evictCacheKeyVariants(Cache cache, String clientId, String principal) {
+		cache.evictIfPresent(principal);
+		if (!StringUtils.hasText(clientId)) {
+			return;
+		}
+		cache.evictIfPresent(clientId + "::" + principal);
+		cache.evictIfPresent(clientId + "::" + SecurityConstants.PASSWORD + "::" + principal);
+		cache.evictIfPresent(clientId + "::" + SecurityConstants.OTP + "::" + principal);
+		cache.evictIfPresent(clientId + "::" + SecurityConstants.MOBILE + "::" + principal);
+		cache.evictIfPresent(clientId + "::" + SecurityConstants.PASSKEY + "::" + principal);
 	}
 
 	private String resolveAccountStatus(SysUser user) {
@@ -625,26 +693,29 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 		List<AuthAccountCredential> accountCredentials = credentials.stream()
 			.filter(credential -> account.getAccountId().equals(credential.getAccountId()))
 			.toList();
-		List<AuthAccountIdentifierManageVO> accountIdentifiers = identifiers.stream()
+		List<AuthAccountIdentifier> accountIdentifierEntities = identifiers.stream()
 			.filter(identifier -> account.getAccountId().equals(identifier.getAccountId()))
+			.toList();
+		List<AuthAccountIdentifierManageVO> accountIdentifiers = accountIdentifierEntities.stream()
 			.map(this::toIdentifierView)
 			.toList();
+
 		AuthAccountCredentialManageVO view = new AuthAccountCredentialManageVO();
 		view.setAccountId(account.getAccountId());
 		view.setUserId(account.getUserId());
 		view.setClientId(account.getClientId());
-		view.setLoginName(account.getLoginName());
-		view.setPhone(account.getPhone());
+		view.setLoginName(resolveIdentifierValue(accountIdentifierEntities, IDENTIFIER_USERNAME));
+		view.setPhone(resolveIdentifierValue(accountIdentifierEntities, IDENTIFIER_PHONE));
 		view.setAccountStatus(account.getStatus());
 		view.setPasswordStatus(resolveCredentialStatus(accountCredentials, CREDENTIAL_PASSWORD));
 		view.setOtpStatus(resolveCredentialStatus(accountCredentials, CREDENTIAL_OTP));
 		view.setPasskeyCount((int) accountCredentials.stream()
-			.filter(credential -> "PASSKEY".equals(credential.getCredentialType()))
+			.filter(credential -> CREDENTIAL_PASSKEY.equals(credential.getCredentialType()))
 			.filter(credential -> CommonConstants.STATUS_NORMAL.equals(credential.getStatus()))
 			.count());
 		view.setLatestVerifiedAt(accountCredentials.stream()
 			.map(AuthAccountCredential::getVerifiedAt)
-			.filter(java.util.Objects::nonNull)
+			.filter(Objects::nonNull)
 			.max(LocalDateTime::compareTo)
 			.orElse(null));
 		view.setIdentifiers(accountIdentifiers);
@@ -668,6 +739,43 @@ public class AuthAccountServiceImpl implements AuthAccountService {
 			.map(AuthAccountCredential::getStatus)
 			.findFirst()
 			.orElse(null);
+	}
+
+	private List<AuthAccountIdentifier> listIdentifierEntities(Long accountId) {
+		if (accountId == null) {
+			return List.of();
+		}
+		return authAccountIdentifierMapper.selectList(Wrappers.<AuthAccountIdentifier>lambdaQuery()
+			.eq(AuthAccountIdentifier::getAccountId, accountId)
+			.orderByAsc(AuthAccountIdentifier::getIdentifierType)
+			.orderByDesc(AuthAccountIdentifier::getPrimaryFlag)
+			.orderByAsc(AuthAccountIdentifier::getCreateTime));
+	}
+
+	private String resolveIdentifierValue(List<AuthAccountIdentifier> identifiers, String identifierType) {
+		if (identifiers == null || identifiers.isEmpty()) {
+			return null;
+		}
+		return identifiers.stream()
+			.filter(identifier -> identifierType.equals(identifier.getIdentifierType()))
+			.sorted(Comparator.comparing(AuthAccountIdentifier::getPrimaryFlag, Comparator.nullsLast(String::compareTo))
+				.reversed()
+				.thenComparing(AuthAccountIdentifier::getVerifiedAt, Comparator.nullsLast(LocalDateTime::compareTo))
+				.reversed())
+			.map(AuthAccountIdentifier::getIdentifierValue)
+			.filter(StringUtils::hasText)
+			.findFirst()
+			.orElse(null);
+	}
+
+	private boolean matchesLoginName(AuthAccountCredentialManageVO view, String loginName) {
+		return !StringUtils.hasText(loginName)
+				|| StringUtils.hasText(view.getLoginName()) && view.getLoginName().contains(loginName);
+	}
+
+	private boolean matchesPhone(AuthAccountCredentialManageVO view, String phone) {
+		return !StringUtils.hasText(phone)
+				|| StringUtils.hasText(view.getPhone()) && view.getPhone().contains(phone);
 	}
 
 }

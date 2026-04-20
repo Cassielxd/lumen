@@ -1,12 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.lumencloud.lumen.admin.mapper.SysUserMapper">
-	<!-- 通用查询映射结果 -->
 	<resultMap id="baseResultMap" type="com.lumencloud.lumen.admin.api.vo.UserVO">
 		<id column="user_id" property="userId"/>
 		<result column="username" property="username"/>
-		<result column="password" property="password"/>
-		<result column="salt" property="salt"/>
 		<result column="phone" property="phone"/>
 		<result column="avatar" property="avatar"/>
 		<result column="create_time" property="createTime"/>
@@ -27,7 +24,6 @@
 		</collection>
 	</resultMap>
 
-	<!-- 用户查询SQL -->
 	<sql id="userQuerySql">
 		SELECT * FROM sys_user u
 		<where>
@@ -50,17 +46,14 @@
 		ORDER BY u.create_time DESC
 	</sql>
 
-	<!-- 分页查询 -->
 	<select id="getUsersPage" resultMap="baseResultMap">
 		<include refid="userQuerySql"/>
 	</select>
 
-	<!-- 用户列表  -->
 	<select id="listUsers" resultMap="baseResultMap">
 		<include refid="userQuerySql"/>
 	</select>
 
-	<!-- 查询用户信息  （单个）-->
 	<select id="getUser" resultMap="baseResultMap">
 		SELECT * FROM sys_user u
 		<where>

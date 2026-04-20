@@ -29,9 +29,6 @@ import java.util.List;
 
 /**
  * User transfer object.
- *
- * @author lengleng
- * @date 2017/11/5
  */
 @Data
 @Schema(description = "System user transfer object")
@@ -49,6 +46,9 @@ public class UserDTO extends SysUser {
 
 	@Schema(description = "Post IDs")
 	private List<Long> post;
+
+	@Schema(description = "Password")
+	private String password;
 
 	@Schema(description = "New password")
 	private String newpassword1;

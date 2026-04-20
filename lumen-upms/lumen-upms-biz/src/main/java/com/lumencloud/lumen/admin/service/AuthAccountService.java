@@ -50,4 +50,6 @@ public interface AuthAccountService {
 
 	Boolean removeIdentifier(Long identifierId, String updatedBy);
 
+	Optional<String> getPrimaryIdentifierValue(Long accountId, String identifierType);
+
 }

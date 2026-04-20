@@ -126,6 +126,13 @@ export async function fetchSessions(token) {
   return unwrapBusiness(response.data);
 }
 
+export async function fetchCurrentUserInfo(token) {
+  const response = await http.get("/user/info", {
+    headers: bearerHeaders(token)
+  });
+  return unwrapBusiness(response.data);
+}
+
 export async function revokeSession(token, sid) {
   const response = await http.delete(`/auth-session/current/${encodeURIComponent(sid)}`, {
     headers: bearerHeaders(token)

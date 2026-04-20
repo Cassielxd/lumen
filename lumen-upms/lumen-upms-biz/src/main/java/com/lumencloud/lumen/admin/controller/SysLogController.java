@@ -6,6 +6,7 @@ import com.lumencloud.lumen.admin.api.dto.SysLogDTO;
 import com.lumencloud.lumen.admin.api.entity.SysLog;
 import com.lumencloud.lumen.admin.service.SysLogService;
 import com.lumencloud.lumen.common.core.util.R;
+import com.lumencloud.lumen.common.security.annotation.HasPermission;
 import com.lumencloud.lumen.common.security.annotation.Inner;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -34,12 +35,14 @@ public class SysLogController {
 	private final SysLogService sysLogService;
 
 	@GetMapping("/page")
+	@HasPermission("sys_log_view")
 	@Operation(summary = "Page query logs", description = "Page query system logs")
 	public R<Page<SysLog>> getLogPage(@ParameterObject Page<SysLog> page, @ParameterObject SysLogDTO sysLog) {
 		return R.ok(sysLogService.getLogPage(page, sysLog));
 	}
 
 	@GetMapping("/list")
+	@HasPermission("sys_log_view")
 	@Operation(summary = "List logs", description = "List system logs by filters")
 	public R<List<SysLog>> list(@ParameterObject SysLogDTO sysLog) {
 		return R.ok(sysLogService.listLogs(sysLog));

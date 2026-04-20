@@ -53,7 +53,7 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 
-const menuItems = computed(() => buildConsoleMenu(authStore.selectedClientId));
+const menuItems = computed(() => buildConsoleMenu(authStore.selectedClientId, authStore.permissions));
 
 async function handleLogout() {
   await authStore.logout();

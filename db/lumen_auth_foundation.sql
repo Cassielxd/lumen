@@ -4,17 +4,13 @@ CREATE TABLE IF NOT EXISTS `auth_account` (
   `account_id` bigint NOT NULL COMMENT 'Account ID',
   `user_id` bigint NOT NULL COMMENT 'User ID',
   `client_id` varchar(32) NOT NULL COMMENT 'Client ID',
-  `login_name` varchar(64) DEFAULT NULL COMMENT 'Login name',
-  `phone` varchar(20) DEFAULT NULL COMMENT 'Phone',
   `status` char(1) DEFAULT '0' COMMENT 'Status',
   `create_by` varchar(64) DEFAULT NULL COMMENT 'Created by',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
   `update_by` varchar(64) DEFAULT NULL COMMENT 'Updated by',
   `update_time` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
   PRIMARY KEY (`account_id`) USING BTREE,
-  UNIQUE KEY `uk_auth_account_client_user` (`client_id`,`user_id`) USING BTREE,
-  UNIQUE KEY `uk_auth_account_client_login_name` (`client_id`,`login_name`) USING BTREE,
-  UNIQUE KEY `uk_auth_account_client_phone` (`client_id`,`phone`) USING BTREE
+  UNIQUE KEY `uk_auth_account_client_user` (`client_id`,`user_id`) USING BTREE
 ) ENGINE=InnoDB COMMENT='Client-bound authentication account';
 
 CREATE TABLE IF NOT EXISTS `auth_account_identifier` (
@@ -80,12 +76,12 @@ CREATE TABLE IF NOT EXISTS `auth_session` (
   KEY `idx_auth_session_user_id` (`user_id`) USING BTREE
 ) ENGINE=InnoDB COMMENT='Authentication session';
 
-INSERT IGNORE INTO `auth_account` VALUES (100001, 1, 'app', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT IGNORE INTO `auth_account` VALUES (100002, 1, 'daemon', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT IGNORE INTO `auth_account` VALUES (100003, 1, 'gen', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT IGNORE INTO `auth_account` VALUES (100004, 1, 'mp', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT IGNORE INTO `auth_account` VALUES (100005, 1, 'lumen', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
-INSERT IGNORE INTO `auth_account` VALUES (100006, 1, 'test', 'admin', '17034642999', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT IGNORE INTO `auth_account` VALUES (100001, 1, 'app', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT IGNORE INTO `auth_account` VALUES (100002, 1, 'daemon', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT IGNORE INTO `auth_account` VALUES (100003, 1, 'gen', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT IGNORE INTO `auth_account` VALUES (100004, 1, 'mp', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT IGNORE INTO `auth_account` VALUES (100005, 1, 'lumen', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
+INSERT IGNORE INTO `auth_account` VALUES (100006, 1, 'test', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
 
 INSERT IGNORE INTO `auth_account_identifier` VALUES (220001, 100001, 'app', 'USERNAME', 'admin', '1', '2026-04-15 00:00:00', '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');
 INSERT IGNORE INTO `auth_account_identifier` VALUES (220002, 100001, 'app', 'PHONE', '17034642999', '1', NULL, '0', 'admin', '2026-04-15 00:00:00', 'admin', '2026-04-15 00:00:00');

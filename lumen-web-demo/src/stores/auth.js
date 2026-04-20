@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 
 import {
   deleteCurrentPasskey,
+  fetchCurrentUserInfo,
   fetchPasskeys,
   fetchPublicClients,
   fetchSessions,
@@ -20,6 +21,7 @@ const STORAGE_KEY = "lumen-web-demo-auth";
 
 function initialState() {
   return {
+    hydrated: false,
     selectedClientId: "",
     clientCatalog: [],
     accessToken: "",
@@ -28,6 +30,8 @@ function initialState() {
     expiresIn: 0,
     sid: "",
     username: "",
+    permissions: [],
+    profileLoaded: false,
     grantType: "",
     loggedInAt: ""
   };
@@ -44,13 +48,20 @@ export const useAuthStore = defineStore("auth", {
     },
     isAuthenticated(state) {
       return Boolean(state.accessToken);
+    },
+    hasPermission(state) {
+      return (permission) => !permission || state.permissions.includes(permission);
     }
   },
   actions: {
     hydrate() {
+      if (this.hydrated) {
+        return;
+      }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
         this.clientCatalog = [];
+        this.hydrated = true;
         return;
       }
       try {
@@ -59,6 +70,9 @@ export const useAuthStore = defineStore("auth", {
         localStorage.removeItem(STORAGE_KEY);
       }
       this.clientCatalog = buildClientCatalog(this.clientCatalog);
+      this.permissions = Array.isArray(this.permissions) ? this.permissions : [];
+      this.profileLoaded = false;
+      this.hydrated = true;
     },
     persist() {
       localStorage.setItem(
@@ -72,6 +86,7 @@ export const useAuthStore = defineStore("auth", {
           expiresIn: this.expiresIn,
           sid: this.sid,
           username: this.username,
+          permissions: this.permissions,
           grantType: this.grantType,
           loggedInAt: this.loggedInAt
         })
@@ -95,6 +110,8 @@ export const useAuthStore = defineStore("auth", {
       this.expiresIn = tokenPayload.expires_in || 0;
       this.sid = tokenPayload.sid || "";
       this.username = meta.username;
+      this.permissions = [];
+      this.profileLoaded = false;
       this.grantType = meta.grantType;
       this.loggedInAt = new Date().toISOString();
       this.persist();
@@ -117,6 +134,7 @@ export const useAuthStore = defineStore("auth", {
         username: form.username,
         grantType: "password"
       });
+      await this.ensureCurrentUserProfile();
       return tokenPayload;
     },
     async sendOtpCode(mobile) {
@@ -128,6 +146,7 @@ export const useAuthStore = defineStore("auth", {
         username: form.mobile,
         grantType: "otp"
       });
+      await this.ensureCurrentUserProfile();
       return tokenPayload;
     },
     async loginWithPasskey(username) {
@@ -136,7 +155,25 @@ export const useAuthStore = defineStore("auth", {
         username,
         grantType: "passkey"
       });
+      await this.ensureCurrentUserProfile();
       return tokenPayload;
+    },
+    async ensureCurrentUserProfile() {
+      if (!this.accessToken) {
+        return null;
+      }
+      if (this.profileLoaded) {
+        return {
+          username: this.username,
+          permissions: this.permissions
+        };
+      }
+      const profile = await fetchCurrentUserInfo(this.accessToken);
+      this.username = profile?.username || this.username;
+      this.permissions = Array.isArray(profile?.permissions) ? profile.permissions : [];
+      this.profileLoaded = true;
+      this.persist();
+      return profile;
     },
     async loadSessions() {
       return fetchSessions(this.accessToken);

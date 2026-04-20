@@ -19,7 +19,6 @@
 
 package com.lumencloud.lumen.admin.api.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.lumencloud.lumen.admin.api.vo.UserVO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -32,9 +31,6 @@ import java.util.List;
 
 /**
  * Spring Security user info payload.
- *
- * @author lengleng
- * @date 2025/06/28
  */
 @Data
 @Schema(description = "Spring Security user info")
@@ -44,11 +40,8 @@ public class UserInfo extends UserVO implements Serializable {
 	@Serial
 	private static final long serialVersionUID = 1L;
 
-	@JsonIgnore(value = false)
+	@Schema(description = "Encoded password credential")
 	private String password;
-
-	@JsonIgnore(value = false)
-	private String salt;
 
 	@Schema(description = "Permission codes")
 	private List<String> permissions = new ArrayList<>();

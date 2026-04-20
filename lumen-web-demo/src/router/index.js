@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-import { isPlatformClient, resolveDefaultDashboardPath } from "../data/console";
+import { hasConsolePermission, isPlatformClient, resolveDefaultDashboardPath } from "../data/console";
 import { pinia } from "../stores";
 import { useAuthStore } from "../stores/auth";
 import ConsoleLayout from "../views/layouts/ConsoleLayout.vue";
@@ -72,7 +72,8 @@ const routes = [
         component: PlatformCredentialManagementView,
         meta: {
           requiresAuth: true,
-          requiresPlatform: true
+          requiresPlatform: true,
+          requiredPermission: "auth_account_manage"
         }
       },
       {
@@ -81,7 +82,8 @@ const routes = [
         component: PlatformSessionManagementView,
         meta: {
           requiresAuth: true,
-          requiresPlatform: true
+          requiresPlatform: true,
+          requiredPermission: "auth_session_manage"
         }
       },
       {
@@ -90,7 +92,8 @@ const routes = [
         component: PlatformAuditManagementView,
         meta: {
           requiresAuth: true,
-          requiresPlatform: true
+          requiresPlatform: true,
+          requiredPermission: "sys_log_view"
         }
       }
     ]
@@ -106,21 +109,36 @@ router.beforeEach((to) => {
   const authStore = useAuthStore(pinia);
   authStore.hydrate();
 
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    return { name: "login" };
-  }
+  return (async () => {
+    if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+      return { name: "login" };
+    }
 
-  if (to.name === "login" && authStore.isAuthenticated) {
-    return resolveDefaultDashboardPath(authStore.selectedClientId);
-  }
+    if (authStore.isAuthenticated) {
+      try {
+        await authStore.ensureCurrentUserProfile();
+      } catch (error) {
+        await authStore.logout();
+        return { name: "login" };
+      }
+    }
 
-  if (authStore.isAuthenticated && to.path === "/dashboard") {
-    return resolveDefaultDashboardPath(authStore.selectedClientId);
-  }
+    if (to.name === "login" && authStore.isAuthenticated) {
+      return resolveDefaultDashboardPath(authStore.selectedClientId, authStore.permissions);
+    }
 
-  if (to.meta.requiresPlatform && !isPlatformClient(authStore.currentClient.id)) {
-    return "/dashboard/overview";
-  }
+    if (authStore.isAuthenticated && to.path === "/dashboard") {
+      return resolveDefaultDashboardPath(authStore.selectedClientId, authStore.permissions);
+    }
 
-  return true;
+    if (to.meta.requiresPlatform && !isPlatformClient(authStore.currentClient.id)) {
+      return "/dashboard/overview";
+    }
+
+    if (to.meta.requiredPermission && !hasConsolePermission(authStore.permissions, to.meta.requiredPermission)) {
+      return resolveDefaultDashboardPath(authStore.selectedClientId, authStore.permissions);
+    }
+
+    return true;
+  })();
 });

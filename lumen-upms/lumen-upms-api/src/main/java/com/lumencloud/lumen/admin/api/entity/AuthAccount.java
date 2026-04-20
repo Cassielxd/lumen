@@ -27,12 +27,6 @@ public class AuthAccount extends BaseEntity {
 	@Schema(description = "Client ID")
 	private String clientId;
 
-	@Schema(description = "Login name")
-	private String loginName;
-
-	@Schema(description = "Phone")
-	private String phone;
-
 	@Schema(description = "Status")
 	private String status;
 

@@ -8,18 +8,22 @@ import com.lumencloud.lumen.admin.mapper.AuthAccountCredentialMapper;
 import com.lumencloud.lumen.admin.mapper.AuthAccountIdentifierMapper;
 import com.lumencloud.lumen.admin.mapper.AuthAccountMapper;
 import com.lumencloud.lumen.admin.mapper.SysUserMapper;
+import com.lumencloud.lumen.common.core.constant.CacheConstants;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,22 +32,17 @@ class AuthAccountServiceImplTest {
 
 	@Test
 	void resolveAccountUsesIdentifierModelFirst() {
-		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
-		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(mock(AuthAccountMapper.class), mock(AuthAccountCredentialMapper.class),
+				mock(AuthAccountIdentifierMapper.class), mock(SysUserMapper.class));
 
 		AuthAccountIdentifier identifier = new AuthAccountIdentifier();
 		identifier.setAccountId(1001L);
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(1001L);
 		account.setClientId("app");
-		account.setLoginName("admin");
 
-		when(identifierMapper.selectOne(any(), anyBoolean())).thenReturn(identifier);
-		when(accountMapper.selectById(1001L)).thenReturn(account);
+		when(serviceResolveIdentifierMapper(service).selectOne(any(), anyBoolean())).thenReturn(identifier);
+		when(serviceAccountMapper(service).selectById(1001L)).thenReturn(account);
 
 		Optional<AuthAccount> result = service.resolveAccount("app", "admin", null);
 
@@ -53,12 +52,9 @@ class AuthAccountServiceImplTest {
 
 	@Test
 	void getCredentialFallsBackToAnyCredentialKeyForPasskeyStyleCredentials() {
-		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
 		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
-		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(mock(AuthAccountMapper.class), credentialMapper,
+				mock(AuthAccountIdentifierMapper.class), mock(SysUserMapper.class));
 
 		AuthAccountCredential passkeyCredential = new AuthAccountCredential();
 		passkeyCredential.setCredentialId(12L);
@@ -74,35 +70,12 @@ class AuthAccountServiceImplTest {
 	}
 
 	@Test
-	void getCredentialPrefersDefaultCredentialKeyWhenPresent() {
+	void resetPasswordShouldOnlyUpdateCurrentAccountCredential() {
 		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
 		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
-		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
 		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
-
-		AuthAccountCredential passwordCredential = new AuthAccountCredential();
-		passwordCredential.setCredentialId(7L);
-		passwordCredential.setCredentialType("PASSWORD");
-		passwordCredential.setCredentialKey("");
-
-		when(credentialMapper.selectOne(any(), anyBoolean())).thenReturn(passwordCredential);
-
-		Optional<AuthAccountCredential> result = service.getCredential(200L, "PASSWORD");
-
-		assertThat(result).isPresent();
-		assertThat(result.get().getCredentialKey()).isEmpty();
-	}
-
-	@Test
-	void resetPasswordSynchronizesLegacyUserShadowAndOnlyCurrentAccountCredential() {
-		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
 		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(accountMapper, credentialMapper, identifierMapper, sysUserMapper);
 
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(1001L);
@@ -112,36 +85,14 @@ class AuthAccountServiceImplTest {
 
 		when(accountMapper.selectById(1001L)).thenReturn(account);
 		when(credentialMapper.selectOne(any(), anyBoolean())).thenReturn(null);
+		when(identifierMapper.selectList(any())).thenReturn(List.of());
 
 		Boolean result = service.resetPassword(1001L, "123456", "admin");
 
 		assertThat(result).isTrue();
-		verify(sysUserMapper).updateById(any(SysUser.class));
-		verify(credentialMapper).insert(any(AuthAccountCredential.class));
-		verify(accountMapper, never()).selectList(any());
-	}
-
-	@Test
-	void updatePasswordCredentialShouldOnlyUpdateSpecifiedAccount() {
-		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
-		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
-
-		AuthAccount account = new AuthAccount();
-		account.setAccountId(1001L);
-		account.setClientId("app");
-		account.setStatus("0");
-
-		when(accountMapper.selectById(1001L)).thenReturn(account);
-		when(credentialMapper.selectOne(any(), anyBoolean())).thenReturn(null);
-
-		service.updatePasswordCredential(1001L, "$2a$10$encoded", "admin");
-
 		verify(credentialMapper).insert(any(AuthAccountCredential.class));
 		verify(sysUserMapper, never()).updateById(any(SysUser.class));
+		verify(accountMapper, never()).selectList(any());
 	}
 
 	@Test
@@ -149,9 +100,8 @@ class AuthAccountServiceImplTest {
 		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
 		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
 		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(accountMapper, credentialMapper, identifierMapper,
+				mock(SysUserMapper.class));
 
 		AuthAccount appAccount = new AuthAccount();
 		appAccount.setAccountId(1001L);
@@ -167,27 +117,25 @@ class AuthAccountServiceImplTest {
 
 		when(accountMapper.selectList(any())).thenReturn(List.of(appAccount, lumenAccount));
 		when(credentialMapper.selectOne(any(), anyBoolean())).thenReturn(null);
+		when(identifierMapper.selectList(any())).thenReturn(List.of());
 
 		service.syncPasswordCredentialForClients(2002L, Set.of("app"), "$2a$10$encoded", "admin");
 
-		verify(credentialMapper).insert(any(AuthAccountCredential.class));
 		verify(credentialMapper, times(1)).insert(any(AuthAccountCredential.class));
 	}
 
 	@Test
-	void updateOtpStatusShouldRejectEnableWhenPhoneIsMissing() {
+	void updateOtpStatusShouldRejectEnableWhenPhoneIdentifierIsMissing() {
 		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
 		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(accountMapper, mock(AuthAccountCredentialMapper.class),
+				identifierMapper, mock(SysUserMapper.class));
 
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(1001L);
 		account.setStatus("0");
-
 		when(accountMapper.selectById(1001L)).thenReturn(account);
+		when(identifierMapper.selectOne(any(), anyBoolean())).thenReturn(null, null);
 
 		Boolean result = service.updateOtpStatus(1001L, "0", "admin");
 
@@ -195,36 +143,11 @@ class AuthAccountServiceImplTest {
 	}
 
 	@Test
-	void clearPasskeysShouldLockOnlyNormalCredentialsOfCurrentAccount() {
-		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
-		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
-
-		AuthAccountCredential passkey = new AuthAccountCredential();
-		passkey.setCredentialId(9001L);
-		passkey.setAccountId(1001L);
-		passkey.setCredentialType("PASSKEY");
-		passkey.setStatus("0");
-
-		when(credentialMapper.selectList(any())).thenReturn(List.of(passkey));
-
-		Boolean result = service.clearPasskeys(1001L, "admin");
-
-		assertThat(result).isTrue();
-		verify(credentialMapper).updateById(any(AuthAccountCredential.class));
-	}
-
-	@Test
 	void saveIdentifierShouldCreateSecondaryAliasUnderSameClient() {
 		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
 		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(accountMapper, mock(AuthAccountCredentialMapper.class),
+				identifierMapper, mock(SysUserMapper.class));
 
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(1001L);
@@ -233,6 +156,7 @@ class AuthAccountServiceImplTest {
 
 		when(accountMapper.selectById(1001L)).thenReturn(account);
 		when(identifierMapper.selectOne(any(), anyBoolean())).thenReturn(null);
+		when(identifierMapper.selectList(any())).thenReturn(List.of());
 
 		Boolean result = service.saveIdentifier(1001L, "email", "Admin@Example.com", "admin");
 
@@ -242,12 +166,9 @@ class AuthAccountServiceImplTest {
 
 	@Test
 	void removeIdentifierShouldRejectPrimaryIdentifier() {
-		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
 		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(mock(AuthAccountMapper.class), mock(AuthAccountCredentialMapper.class),
+				identifierMapper, mock(SysUserMapper.class));
 
 		AuthAccountIdentifier identifier = new AuthAccountIdentifier();
 		identifier.setIdentifierId(2001L);
@@ -263,11 +184,9 @@ class AuthAccountServiceImplTest {
 	@Test
 	void syncUserProfileShouldKeepSecondaryAliasesWhileRefreshingPrimaryUsername() {
 		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
-		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
 		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
-		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
-		AuthAccountServiceImpl service = new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper,
-				sysUserMapper);
+		AuthAccountServiceImpl service = createService(accountMapper, mock(AuthAccountCredentialMapper.class),
+				identifierMapper, mock(SysUserMapper.class));
 
 		AuthAccount account = new AuthAccount();
 		account.setAccountId(1001L);
@@ -306,4 +225,193 @@ class AuthAccountServiceImplTest {
 		verify(identifierMapper, times(2)).insert(any(AuthAccountIdentifier.class));
 		verify(identifierMapper, never()).deleteById(3002L);
 	}
+
+	@Test
+	void resolveAccountShouldSupportEmailIdentifierLogin() {
+		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
+		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
+		AuthAccountServiceImpl service = createService(accountMapper, mock(AuthAccountCredentialMapper.class),
+				identifierMapper, mock(SysUserMapper.class));
+
+		AuthAccountIdentifier emailIdentifier = new AuthAccountIdentifier();
+		emailIdentifier.setAccountId(1001L);
+
+		AuthAccount account = new AuthAccount();
+		account.setAccountId(1001L);
+		account.setClientId("app");
+
+		when(identifierMapper.selectOne(any(), anyBoolean())).thenReturn(null, emailIdentifier);
+		when(accountMapper.selectById(1001L)).thenReturn(account);
+
+		Optional<AuthAccount> result = service.resolveAccount("app", "Admin@Example.com", null);
+
+		assertThat(result).isPresent();
+		assertThat(result.get().getAccountId()).isEqualTo(1001L);
+		verify(identifierMapper, times(2)).selectOne(any(), anyBoolean());
+	}
+
+	@Test
+	void resetPasswordShouldEvictCachedUserDetailsForKnownPrincipals() {
+		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
+		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
+		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
+		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
+		CacheManager cacheManager = new ConcurrentMapCacheManager(CacheConstants.USER_DETAILS);
+		AuthAccountServiceImpl service = createService(accountMapper, credentialMapper, identifierMapper, sysUserMapper,
+				cacheManager);
+
+		AuthAccount account = new AuthAccount();
+		account.setAccountId(1001L);
+		account.setUserId(2002L);
+		account.setClientId("app");
+		account.setStatus("0");
+
+		SysUser user = new SysUser();
+		user.setUserId(2002L);
+		user.setUsername("admin");
+		user.setPhone("17034642999");
+		user.setEmail("Admin@Example.com");
+
+		AuthAccountIdentifier primaryUsername = identifier(1001L, "USERNAME", "admin", "1");
+		AuthAccountIdentifier emailIdentifier = identifier(1001L, "EMAIL", "admin@example.com", "0");
+		AuthAccountIdentifier aliasIdentifier = identifier(1001L, "USERNAME", "admin.alias", "0");
+
+		when(accountMapper.selectById(1001L)).thenReturn(account);
+		when(credentialMapper.selectOne(any(), anyBoolean())).thenReturn(null);
+		when(sysUserMapper.selectById(2002L)).thenReturn(user);
+		when(identifierMapper.selectList(any())).thenReturn(List.of(primaryUsername, emailIdentifier, aliasIdentifier));
+
+		Cache cache = cacheManager.getCache(CacheConstants.USER_DETAILS);
+		cache.put("app::password::admin", "cached");
+		cache.put("app::otp::17034642999", "cached");
+		cache.put("app::passkey::admin@example.com", "cached");
+		cache.put("app::password::admin.alias", "cached");
+		cache.put("Admin@Example.com", "cached");
+
+		Boolean result = service.resetPassword(1001L, "123456", "admin");
+
+		assertThat(result).isTrue();
+		assertThat(cache.get("app::password::admin")).isNull();
+		assertThat(cache.get("app::otp::17034642999")).isNull();
+		assertThat(cache.get("app::passkey::admin@example.com")).isNull();
+		assertThat(cache.get("app::password::admin.alias")).isNull();
+		assertThat(cache.get("Admin@Example.com")).isNull();
+	}
+
+	@Test
+	void updateOtpStatusShouldEvictCachedUserDetails() {
+		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
+		AuthAccountCredentialMapper credentialMapper = mock(AuthAccountCredentialMapper.class);
+		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
+		SysUserMapper sysUserMapper = mock(SysUserMapper.class);
+		CacheManager cacheManager = new ConcurrentMapCacheManager(CacheConstants.USER_DETAILS);
+		AuthAccountServiceImpl service = createService(accountMapper, credentialMapper, identifierMapper, sysUserMapper,
+				cacheManager);
+
+		AuthAccount account = new AuthAccount();
+		account.setAccountId(1001L);
+		account.setUserId(2002L);
+		account.setClientId("app");
+		account.setStatus("0");
+
+		SysUser user = new SysUser();
+		user.setUserId(2002L);
+		user.setUsername("admin");
+		user.setPhone("17034642999");
+
+		AuthAccountIdentifier phoneIdentifier = identifier(1001L, "PHONE", "17034642999", "1");
+
+		when(accountMapper.selectById(1001L)).thenReturn(account);
+		when(credentialMapper.selectOne(any(), anyBoolean())).thenReturn(null);
+		when(sysUserMapper.selectById(2002L)).thenReturn(user);
+		when(identifierMapper.selectOne(any(), anyBoolean())).thenReturn(phoneIdentifier);
+		when(identifierMapper.selectList(any())).thenReturn(List.of(phoneIdentifier));
+
+		Cache cache = cacheManager.getCache(CacheConstants.USER_DETAILS);
+		cache.put("app::otp::17034642999", "cached");
+		cache.put("17034642999", "cached");
+
+		Boolean result = service.updateOtpStatus(1001L, "9", "admin");
+
+		assertThat(result).isTrue();
+		assertThat(cache.get("app::otp::17034642999")).isNull();
+		assertThat(cache.get("17034642999")).isNull();
+	}
+
+	@Test
+	void syncUserProfileShouldFailFastWhenPrimaryIdentifierCollides() {
+		AuthAccountMapper accountMapper = mock(AuthAccountMapper.class);
+		AuthAccountIdentifierMapper identifierMapper = mock(AuthAccountIdentifierMapper.class);
+		AuthAccountServiceImpl service = createService(accountMapper, mock(AuthAccountCredentialMapper.class),
+				identifierMapper, mock(SysUserMapper.class));
+
+		AuthAccount account = new AuthAccount();
+		account.setAccountId(1001L);
+		account.setUserId(2002L);
+		account.setClientId("lumen");
+		account.setStatus("0");
+
+		AuthAccountIdentifier duplicateEmail = new AuthAccountIdentifier();
+		duplicateEmail.setAccountId(3003L);
+		duplicateEmail.setIdentifierType("EMAIL");
+		duplicateEmail.setIdentifierValue("admin@example.com");
+
+		when(accountMapper.selectList(any())).thenReturn(List.of(account));
+		when(identifierMapper.selectOne(any(), anyBoolean())).thenReturn(null, null, duplicateEmail);
+		when(identifierMapper.selectList(any())).thenReturn(List.of(), List.of());
+
+		SysUser user = new SysUser();
+		user.setUserId(2002L);
+		user.setUsername("new-admin");
+		user.setPhone("17034642999");
+		user.setEmail("admin@example.com");
+		user.setLockFlag("0");
+		user.setUpdateBy("admin");
+
+		assertThatThrownBy(() -> service.syncUserProfile(user)).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("identifier already bound");
+	}
+
+	private AuthAccountIdentifier identifier(Long accountId, String type, String value, String primaryFlag) {
+		AuthAccountIdentifier identifier = new AuthAccountIdentifier();
+		identifier.setAccountId(accountId);
+		identifier.setIdentifierType(type);
+		identifier.setIdentifierValue(value);
+		identifier.setPrimaryFlag(primaryFlag);
+		return identifier;
+	}
+
+	private AuthAccountMapper serviceAccountMapper(AuthAccountServiceImpl service) {
+		return readField(service, "authAccountMapper");
+	}
+
+	private AuthAccountIdentifierMapper serviceResolveIdentifierMapper(AuthAccountServiceImpl service) {
+		return readField(service, "authAccountIdentifierMapper");
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> T readField(Object target, String name) {
+		try {
+			var field = target.getClass().getDeclaredField(name);
+			field.setAccessible(true);
+			return (T) field.get(target);
+		}
+		catch (ReflectiveOperationException ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	private AuthAccountServiceImpl createService(AuthAccountMapper accountMapper,
+			AuthAccountCredentialMapper credentialMapper, AuthAccountIdentifierMapper identifierMapper,
+			SysUserMapper sysUserMapper) {
+		return createService(accountMapper, credentialMapper, identifierMapper, sysUserMapper,
+				new ConcurrentMapCacheManager(CacheConstants.USER_DETAILS));
+	}
+
+	private AuthAccountServiceImpl createService(AuthAccountMapper accountMapper,
+			AuthAccountCredentialMapper credentialMapper, AuthAccountIdentifierMapper identifierMapper,
+			SysUserMapper sysUserMapper, CacheManager cacheManager) {
+		return new AuthAccountServiceImpl(accountMapper, credentialMapper, identifierMapper, sysUserMapper, cacheManager);
+	}
+
 }

@@ -5,15 +5,19 @@ import com.lumencloud.lumen.admin.api.dto.SysLogDTO;
 import com.lumencloud.lumen.admin.api.entity.SysLog;
 import com.lumencloud.lumen.admin.service.SysLogService;
 import com.lumencloud.lumen.common.core.util.R;
+import com.lumencloud.lumen.common.security.annotation.HasPermission;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -63,6 +67,19 @@ class SysLogControllerTest {
 
 		assertTrue(Boolean.TRUE.equals(response.getData()));
 		verify(sysLogService).saveLog(any(SysLog.class));
+	}
+
+	@Test
+	void queryEndpointsShouldRequireLogViewPermission() throws NoSuchMethodException {
+		assertHasPermission("getLogPage", new Class<?>[] { Page.class, SysLogDTO.class });
+		assertHasPermission("list", new Class<?>[] { SysLogDTO.class });
+	}
+
+	private void assertHasPermission(String methodName, Class<?>[] parameterTypes) throws NoSuchMethodException {
+		Method method = SysLogController.class.getDeclaredMethod(methodName, parameterTypes);
+		HasPermission annotation = method.getAnnotation(HasPermission.class);
+		assertNotNull(annotation);
+		assertArrayEquals(new String[] { "sys_log_view" }, annotation.value());
 	}
 
 }

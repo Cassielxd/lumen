@@ -7,6 +7,7 @@ import com.lumencloud.lumen.admin.api.vo.AuthSessionVO;
 import com.lumencloud.lumen.admin.service.AuthSessionService;
 import com.lumencloud.lumen.common.core.util.R;
 import com.lumencloud.lumen.common.log.annotation.SysLog;
+import com.lumencloud.lumen.common.security.annotation.HasPermission;
 import com.lumencloud.lumen.common.security.annotation.Inner;
 import com.lumencloud.lumen.common.security.util.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -85,6 +86,7 @@ public class AuthSessionController {
 	}
 
 	@GetMapping("/manage/list")
+	@HasPermission("auth_session_manage")
 	@Operation(summary = "List platform sessions", description = "List all sessions with platform filters")
 	public R<List<AuthSessionVO>> manageSessions(@RequestParam(required = false) String clientId,
 			@RequestParam(required = false) String principalName, @RequestParam(required = false) String status) {
@@ -93,6 +95,7 @@ public class AuthSessionController {
 
 	@DeleteMapping("/manage/{sid}")
 	@SysLog("平台撤销会话")
+	@HasPermission("auth_session_manage")
 	@Operation(summary = "Revoke platform session", description = "Revoke one session by sid")
 	public R<Boolean> revokeManagedSession(@PathVariable String sid) {
 		return R.ok(authSessionService.adminLogoutBySid(sid));
